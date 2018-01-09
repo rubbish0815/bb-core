@@ -44,7 +44,7 @@ function stop(tag){
 }
 
 function print(){
-	console.log("\nProfiling results:");
+	console.log("Profiling results:");
 	var total = 0;
 	for (var tag in times)
 		total += times[tag];
@@ -61,7 +61,7 @@ function print(){
 }
 
 function print_results() {
-	console.log("\nBenchmarking results:");
+	console.log("Benchmarking results:");
 	for (var tag in timers_results) {
 		var results = timers_results[tag];
 		var sum = 0, max = 0, min = 999999999999;
@@ -73,7 +73,7 @@ function print_results() {
 		}
 		console.log(tag.padding(50) + ": avg:" + Math.round(sum / results.length).toString().padding(8) + "max:" + Math.round(max).toString().padding(8) + "min:" + Math.round(min).toString().padding(8) + "records:" + results.length);
 	}
-	console.log("\n\nStart time: " + profiler_start_ts + ", End time: " + Date.now() + " Elapsed ms:" + (Date.now() - profiler_start_ts));
+	console.log(" Start time: " + profiler_start_ts + ", End time: " + Date.now() + " Elapsed ms:" + (Date.now() - profiler_start_ts));
 }
 
 function pad_right(str, len){

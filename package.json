@@ -2,7 +2,7 @@
   "name": "byteballcore",
   "description": "kt-Byteball Core",
   "author": "Byteball",
-  "version": "0.2.84",
+  "version": "0.2.86",
   "keywords": [
     "byteball",
     "multisignature"

@@ -686,17 +686,27 @@ function findAddress(address, signing_path, callbacks, fallback_remote_device_ad
 }
 
 function readSharedBalance(wallet, handleBalance){
-	balances.readSharedBalance(wallet, handleBalance);
+	balances.readSharedBalance(wallet, function(assocBalances) {
+		if (conf.bLight){ // make sure we have all asset definitions available
+			var arrAssets = Object.keys(assocBalances).filter(function(asset){ return (asset !== 'base'); });
+			if (arrAssets.length === 0)
+				return handleBalance(assocBalances);
+			network.requestProofsOfJointsIfNewOrUnstable(arrAssets, function(){handleBalance(assocBalances)});
+		} else {
+			handleBalance(assocBalances);
+		}
+	});
 }
 
 function readBalance(wallet, handleBalance){
 	balances.readBalance(wallet, function(assocBalances) {
-		handleBalance(assocBalances);
 		if (conf.bLight){ // make sure we have all asset definitions available
 			var arrAssets = Object.keys(assocBalances).filter(function(asset){ return (asset !== 'base'); });
 			if (arrAssets.length === 0)
-				return;
-			network.requestProofsOfJointsIfNewOrUnstable(arrAssets);
+				return handleBalance(assocBalances);
+			network.requestProofsOfJointsIfNewOrUnstable(arrAssets, function(){handleBalance(assocBalances)});
+		} else {
+			handleBalance(assocBalances);
 		}
 	});
 }
@@ -730,20 +740,22 @@ function readAssetMetadata(arrAssets, handleMetadata){
 		// after calling the callback, try to fetch missing data about assets
 		if (!arrAssets)
 			return;
-		arrAssets.forEach(function(asset){
-			if (assocAssetMetadata[asset] || asset === 'base' && asset === constants.BLACKBYTES_ASSET)
-				return;
-			if ((assocLastFailedAssetMetadataTimestamps[asset] || 0) > Date.now() - ASSET_METADATA_RETRY_PERIOD)
-				return;
-			fetchAssetMetadata(asset, function(err, objMetadata){
-				if (err)
-					return console.log(err);
-				assocAssetMetadata[asset] = {
-					metadata_unit: objMetadata.metadata_unit,
-					decimals: objMetadata.decimals,
-					name: objMetadata.suffix ? objMetadata.name+'.'+objMetadata.suffix : objMetadata.name
-				};
-				eventBus.emit('maybe_new_transactions');
+		network.requestProofsOfJointsIfNewOrUnstable(arrAssets, function(){ // make sure we have assets itself
+			arrAssets.forEach(function(asset){
+				if (assocAssetMetadata[asset] || asset === 'base' && asset === constants.BLACKBYTES_ASSET)
+					return;
+				if ((assocLastFailedAssetMetadataTimestamps[asset] || 0) > Date.now() - ASSET_METADATA_RETRY_PERIOD)
+					return;
+				fetchAssetMetadata(asset, function(err, objMetadata){
+					if (err)
+						return console.log(err);
+					assocAssetMetadata[asset] = {
+						metadata_unit: objMetadata.metadata_unit,
+						decimals: objMetadata.decimals,
+						name: objMetadata.suffix ? objMetadata.name+'.'+objMetadata.suffix : objMetadata.name
+					};
+					eventBus.emit('maybe_new_transactions');
+				});
 			});
 		});
 	});
@@ -908,14 +920,16 @@ function readTransactionHistory(opts, handleHistory){
 					else if (movement.has_minus){
 						var queryString, parameters;
 						queryString =   "SELECT outputs.address, SUM(outputs.amount) AS amount, outputs.asset, ("
-										+ ( walletIsAddress ? "outputs.address!=?" : "my_addresses.address IS NULL") + ") AS is_external, \n\
-										sent_mnemonics.textAddress, sent_mnemonics.mnemonic, \n\
-										(SELECT unit_authors.unit FROM unit_authors WHERE unit_authors.address = sent_mnemonics.address LIMIT 1) AS claiming_unit \n\
-										FROM outputs "
-										+ (walletIsAddress ? "" : "LEFT JOIN my_addresses ON outputs.address=my_addresses.address AND wallet=? ") +
-										"LEFT JOIN sent_mnemonics USING(unit) \n\
-										WHERE outputs.unit=? \n\
-										GROUP BY outputs.address, asset";
+							+ ( walletIsAddress ? "outputs.address!=?" : "my_addresses.address IS NULL") + ") AS is_external, \n\
+							sent_mnemonics.textAddress, sent_mnemonics.mnemonic, \n\
+							(SELECT unit_authors.unit FROM unit_authors WHERE unit_authors.address = sent_mnemonics.address LIMIT 1) AS claiming_unit, \n\
+							original_address \n\
+							FROM outputs "
+							+ (walletIsAddress ? "" : "LEFT JOIN my_addresses ON outputs.address=my_addresses.address AND wallet=? ") +
+							"LEFT JOIN sent_mnemonics USING(unit) \n\
+							LEFT JOIN original_addresses ON outputs.unit=original_addresses.unit AND outputs.address=original_addresses.address \n\
+							WHERE outputs.unit=? \n\
+							GROUP BY outputs.address, asset";
 						parameters = [wallet, unit];
 						db.query(queryString, parameters, 
 							function(payee_rows){
@@ -938,6 +952,7 @@ function readTransactionHistory(opts, handleHistory){
 										action: action,
 										amount: payee.amount,
 										addressTo: payee.address,
+										original_address: payee.original_address,
 										textAddress: ValidationUtils.isValidEmail(payee.textAddress) ? payee.textAddress : "",
 										claimed: !!payee.claiming_unit,
 										mnemonic: payee.mnemonic,
@@ -1398,6 +1413,54 @@ function sendMultiPayment(opts, handleResult)
 				}
 			};
 
+			// textcoin claim fees are paid by the sender
+			var indivisibleAssetFeesByAddress = [];
+			var addFeesToParams = function(objAsset) {
+				// iterate over all generated textcoin addresses
+				for (var orig_address in assocAddresses) {
+					var new_address = assocAddresses[orig_address];
+					var _addAssetFees = function() {
+						var asset_fees = objAsset && objAsset.fixed_denominations ? indivisibleAssetFeesByAddress[new_address] : constants.TEXTCOIN_ASSET_CLAIM_FEE;
+						if (!params.base_outputs) params.base_outputs = [];
+						var base_output = _.find(params.base_outputs, function(output) {return output.address == new_address});
+						if (base_output)
+							base_output.amount += asset_fees;
+						else
+							params.base_outputs.push({address: new_address, amount: asset_fees});
+					}
+
+					// first calculate fees for textcoins in (bytes) outputs 
+					var output = _.find(params.outputs, function(output) {return output.address == new_address});
+					if (output) {
+						output.amount += constants.TEXTCOIN_CLAIM_FEE;
+					}
+
+					// second calculate fees for textcoins in base_outputs 
+					output = _.find(params.base_outputs, function(output) {return output.address == new_address});
+					if (output) {
+						output.amount += constants.TEXTCOIN_CLAIM_FEE;
+					}
+
+					// then check for textcoins in asset_outputs
+					output = _.find(params.asset_outputs, function(output) {return output.address == new_address});
+					if (output) {
+						_addAssetFees();
+					}
+
+					// finally check textcoins in to_address
+					if (new_address == params.to_address) {
+						if (objAsset) {
+							delete params.to_address;
+							delete params.amount;
+							params.asset_outputs = [{address: new_address, amount: amount}];
+							_addAssetFees();
+						} else {
+							params.amount += constants.TEXTCOIN_CLAIM_FEE;
+						}
+					}
+				}
+			}
+
 			if (asset){
 				if (bSendAll)
 					throw Error('send_all with asset');
@@ -1437,9 +1500,6 @@ function sendMultiPayment(opts, handleResult)
 						};
 					}
 
-					// textcoin claim fees are paid by the sender
-					var textcoin_fees = constants.TEXTCOIN_ASSET_CLAIM_FEE;
-					var feesByAddress = [];
 					async.series([
 						function(cb) { // calculate fees for indivisible asset
 							if (!Object.keys(assocAddresses).length || !objAsset.fixed_denominations) { // skip this step if no textcoins and for divisible assets
@@ -1454,9 +1514,9 @@ function sendMultiPayment(opts, handleResult)
 									for (var orig_address in assocAddresses) {
 										var new_address = assocAddresses[orig_address];
 										var asset_messages_to_address = _.filter(objJoint.unit.messages, function(m){
-											return m.app === "payment" && _.get(m, 'payload.asset') === asset && _.get(m, 'payload.outputs[0].address') === new_address;
+											return m.app === "payment" && _.get(m, 'payload.asset') === asset && (_.get(m, 'payload.outputs[0].address') === new_address || _.get(m, 'payload.outputs[1].address') === new_address);
 										});
-										feesByAddress[new_address] = constants.TEXTCOIN_ASSET_CLAIM_HEADER_FEE + asset_messages_to_address.length * constants.TEXTCOIN_ASSET_CLAIM_MESSAGE_FEE + constants.TEXTCOIN_ASSET_CLAIM_BASE_MSG_FEE;
+										indivisibleAssetFeesByAddress[new_address] = constants.TEXTCOIN_ASSET_CLAIM_HEADER_FEE + asset_messages_to_address.length * constants.TEXTCOIN_ASSET_CLAIM_MESSAGE_FEE + constants.TEXTCOIN_ASSET_CLAIM_BASE_MSG_FEE;
 									}
 									params.callbacks = old_callbacks;
 									unlock();
@@ -1474,25 +1534,7 @@ function sendMultiPayment(opts, handleResult)
 							indivisibleAsset.composeMinimalIndivisibleAssetPaymentJoint(params);
 						},
 						function(cb) { // add fees
-							for (var orig_address in assocAddresses) {
-								var new_address = assocAddresses[orig_address];
-								if (new_address == params.to_address) {
-									delete params.to_address;
-									delete params.amount;
-									params.asset_outputs = [{address: new_address, amount: amount}];
-									params.base_outputs = [{address: new_address, amount: feesByAddress[new_address]}];
-									continue;
-								}
-								output = _.find(params.asset_outputs, function(output) {output.address == new_address});
-								if (output) {
-									if (!params.base_outputs) params.base_outputs = [];
-									var base_output = _.find(params.base_outputs, function(output) {output.address == new_address});
-									if (base_output)
-										base_output.amount += feesByAddress[new_address];
-									else
-										params.base_outputs.push({address: new_address, amount: feesByAddress[new_address]});
-								}
-							}
+							addFeesToParams(objAsset);
 							cb();
 						},
 						function(cb) { // send payment
@@ -1517,12 +1559,7 @@ function sendMultiPayment(opts, handleResult)
 				else{
 					params.outputs = to_address ? [{address: to_address, amount: amount}] : (base_outputs || []);
 					params.outputs.push({address: change_address, amount: 0});
-					// add claim fees, if textcoin
-					for (var orig_address in assocAddresses) { // look for textcoin addresses
-						var new_address = assocAddresses[orig_address];
-						var output = _.find(params.outputs, function(output) {output.address == new_address});
-						if (output) output.amount += constants.TEXTCOIN_CLAIM_FEE;
-					}
+					addFeesToParams();
 				}
 				composer.composeAndSaveMinimalJoint(params);
 			}

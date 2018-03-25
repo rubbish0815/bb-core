@@ -7,6 +7,9 @@ var conf = require('./conf.js');
 var ValidationUtils = require("./validation_utils.js");
 var indivisibleAsset = require('./indivisible_asset.js');
 var divisibleAsset = require('./divisible_asset.js');
+var logger = require('./logger.js');
+
+
 
 function findUnfinishedPastUnitsOfPrivateChains(arrChains, includeLatestElement, handleUnits){
 	var assocUnits = {};
@@ -70,7 +73,7 @@ function validateAndSavePrivatePaymentChain(arrPrivateElements, callbacks){
 							if (rows.length > 1)
 								throw Error("more than one output "+sql+' '+params.join(', '));
 							if (rows.length > 0 && rows[0].address){ // we could have this output already but the address is still hidden
-								console.log("duplicate private payment "+params.join(', '));
+								logger.debug("duplicate private payment "+params.join(', '));
 								return transaction_callbacks.ifOk();
 							}
 							var assetModule = objAsset.fixed_denominations ? indivisibleAsset : divisibleAsset;

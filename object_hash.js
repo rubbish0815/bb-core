@@ -4,6 +4,9 @@ var crypto = require('crypto');
 var _ = require('lodash');
 var chash = require('./chash.js');
 var getSourceString = require('./string_utils').getSourceString;
+var logger = require('./logger.js');
+
+
 
 function getChash160(obj) {
 	return chash.getChash160(getSourceString(obj));
@@ -36,8 +39,8 @@ function getNakedUnit(objUnit){
 			delete objNakedUnit.messages[i].payload_uri;
 		}
 	}
-	//console.log("naked Unit: ", objNakedUnit);
-	//console.log("original Unit: ", objUnit);
+	//logger.debug("naked Unit: ", objNakedUnit);
+	//logger.debug("original Unit: ", objUnit);
 	return objNakedUnit;
 }
 

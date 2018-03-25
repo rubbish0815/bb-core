@@ -2,6 +2,9 @@
 "use strict";
 var _ = require('lodash');
 require('./enforce_singleton.js');
+var logger = require('./logger.js');
+
+
 
 var arrQueuedJobs = [];
 var arrLockedKeyArrays = [];
@@ -36,14 +39,14 @@ function release(arrKeys){
 
 function exec(arrKeys, proc, next_proc){
 	arrLockedKeyArrays.push(arrKeys);
-	console.log("lock acquired", arrKeys);
+	logger.debug("lock acquired", arrKeys);
 	var bLocked = true;
 	proc(function(){
 		if (!bLocked)
 			throw Error("double unlock?");
 		bLocked = false;
 		release(arrKeys);
-		console.log("lock released", arrKeys);
+		logger.debug("lock released", arrKeys);
 		if (next_proc)
 			next_proc.apply(next_proc, arguments);
 		handleQueue();
@@ -51,22 +54,22 @@ function exec(arrKeys, proc, next_proc){
 }
 
 function handleQueue(){
-	console.log("handleQueue "+arrQueuedJobs.length+" items");
+	logger.debug("handleQueue "+arrQueuedJobs.length+" items");
 	for (var i=0; i<arrQueuedJobs.length; i++){
 		var job = arrQueuedJobs[i];
 		if (isAnyOfKeysLocked(job.arrKeys))
 			continue;
 		arrQueuedJobs.splice(i, 1); // do it before exec as exec can trigger another job added, another lock unlocked, another handleQueue called
-		console.log("starting job held by keys", job.arrKeys);
+		logger.debug("starting job held by keys", job.arrKeys);
 		exec(job.arrKeys, job.proc, job.next_proc);
 		i--; // we've just removed one item
 	}
-	console.log("handleQueue done "+arrQueuedJobs.length+" items");
+	logger.debug("handleQueue done "+arrQueuedJobs.length+" items");
 }
 
 function lock(arrKeys, proc, next_proc){
 	if (isAnyOfKeysLocked(arrKeys)){
-		console.log("queuing job held by keys", arrKeys);
+		logger.debug("queuing job held by keys", arrKeys);
 		arrQueuedJobs.push({arrKeys: arrKeys, proc: proc, next_proc: next_proc, ts:Date.now()});
 	}
 	else
@@ -75,7 +78,7 @@ function lock(arrKeys, proc, next_proc){
 
 function lockOrSkip(arrKeys, proc, next_proc){
 	if (isAnyOfKeysLocked(arrKeys)){
-		console.log("skipping job held by keys", arrKeys);
+		logger.debug("skipping job held by keys", arrKeys);
 		if (next_proc)
 			next_proc();
 	}
@@ -95,7 +98,7 @@ function checkForDeadlocks(){
 //setInterval(checkForDeadlocks, 1000);
 
 setInterval(function(){
-	console.log("queued jobs: "+JSON.stringify(arrQueuedJobs.map(function(job){ return job.arrKeys; }))+", locked keys: "+JSON.stringify(arrLockedKeyArrays));
+	logger.debug("queued jobs: "+JSON.stringify(arrQueuedJobs.map(function(job){ return job.arrKeys; }))+", locked keys: "+JSON.stringify(arrLockedKeyArrays));
 }, 10000);
 
 exports.lock = lock;
@@ -109,14 +112,14 @@ function test(key){
 	lock(
 		[key], 
 		function(cb){
-			console.log("doing "+key);
+			logger.debug("doing "+key);
 			setTimeout(function(){
-				console.log("done "+key);
+				logger.debug("done "+key);
 				cb("arg1", "arg2");
 			}, 1000)
 		},
 		function(arg1, arg2){
-			console.log("got "+arg1+", "+arg2+", loc="+loc);
+			logger.debug("got "+arg1+", "+arg2+", loc="+loc);
 		}
 	);
 }

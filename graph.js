@@ -5,6 +5,7 @@ var async = require('async');
 var storage = require('./storage.js');
 var db = require('./db.js');
 var profiler = require('./profiler.js');
+var logger = require('./logger.js');
 
 
 
@@ -69,7 +70,7 @@ function compareUnitsByProps(conn, objUnitProps1, objUnitProps2, handleResult){
 	var later_unit_delta = objLaterUnit.main_chain_index - objLaterUnit.latest_included_mc_index;
 	
 	function goUp(arrStartUnits){
-		//console.log('compare', arrStartUnits);
+		logger.debug("==goUp==", arrStartUnits);
 		conn.query(
 			"SELECT unit, level, latest_included_mc_index, main_chain_index, is_on_main_chain \n\
 			FROM parenthoods JOIN units ON parent_unit=unit \n\
@@ -125,7 +126,7 @@ function determineIfIncluded(conn, earlier_unit, arrLaterUnits, handleResult){
 		
 		var max_later_limci = Math.max.apply(
 			null, arrLaterUnitProps.map(function(objLaterUnitProps){ return objLaterUnitProps.latest_included_mc_index; }));
-		//console.log("max limci "+max_later_limci+", earlier mci "+objEarlierUnitProps.main_chain_index);
+		logger.debug("max limci: "+max_later_limci+", earlier mci: "+objEarlierUnitProps.main_chain_index);
 		if (objEarlierUnitProps.main_chain_index !== null && max_later_limci >= objEarlierUnitProps.main_chain_index)
 			return handleResult(true);
 		
@@ -135,7 +136,7 @@ function determineIfIncluded(conn, earlier_unit, arrLaterUnits, handleResult){
 			return handleResult(false);
 		
 		function goUp(arrStartUnits){
-			//console.log('determine', earlier_unit, arrLaterUnits, arrStartUnits);
+			logger.debug("==determineIfIncluded==", earlier_unit, arrLaterUnits, arrStartUnits);
 			conn.query(
 				"SELECT unit, level, latest_included_mc_index, main_chain_index, is_on_main_chain \n\
 				FROM parenthoods JOIN units ON parent_unit=unit \n\

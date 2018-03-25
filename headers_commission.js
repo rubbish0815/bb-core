@@ -4,18 +4,20 @@ var crypto = require('crypto');
 var async = require('async');
 var db = require('./db.js');
 var conf = require('./conf.js');
+var logger = require('./logger.js');
+
 
 var max_spendable_mci = null;
 
 function calcHeadersCommissions(conn, onDone){
 	// we don't require neither source nor recipient to be majority witnessed -- we don't want to return many times to the same MC index.
-	console.log("will calc h-comm");
+	logger.debug("will calc Headercommission:");
 	if (max_spendable_mci === null) // first calc after restart only
 		return initMaxSpendableMci(conn, function(){ calcHeadersCommissions(conn, onDone); });
 	
 	// max_spendable_mci is old, it was last updated after previous calc
 	var since_mc_index = max_spendable_mci;
-		
+	logger.debug("max_spendable_mci", max_spendable_mci);
 	async.series([
 		function(cb){
 			if (conf.storage === 'mysql'){
@@ -102,7 +104,7 @@ function calcHeadersCommissions(conn, onDone){
 								assocWonAmounts[child_unit] = {};
 							assocWonAmounts[child_unit][payer_unit] = headers_commission;
 						}
-						//console.log(assocWonAmounts);
+						logger.debug(assocWonAmounts);
 						var arrWinnerUnits = Object.keys(assocWonAmounts);
 						if (arrWinnerUnits.length === 0)
 							return cb();

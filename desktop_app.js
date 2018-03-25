@@ -2,6 +2,7 @@
 "use strict";
 var fs = require('fs'+'');
 var path = require('path'+''); // make browserify skip it
+var logger = require('./logger.js');
 
 function getAppsDataDir(){
 	switch(process.platform){
@@ -27,9 +28,9 @@ function getPackageJsonDir(start_dir){
 
 // app installation dir, this is where the topmost package.json resides
 function getAppRootDir(){
-	//console.log("parent:", module.parent);
-	//console.log("process.mainModule:", process.mainModule);
-	//console.log("require.main:", require.main);
+	logger.debug("parent:", module.parent);
+	logger.debug("process.mainModule:", process.mainModule);
+	logger.debug("require.main:", require.main);
 	var mainModuleDir = path.dirname(process.mainModule.paths[0]);
 	return getPackageJsonDir(mainModuleDir);
 	/*
@@ -44,7 +45,7 @@ function getAppRootDir(){
 // read app name from the topmost package.json
 function getAppName(){
 	var appDir = getAppRootDir();
-	console.log("app dir "+appDir);
+	logger.log("app dir "+appDir);
 	return require(appDir + '/package.json').name;
 }
 

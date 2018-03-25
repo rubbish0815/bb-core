@@ -10,10 +10,11 @@ var objectHash = require("./object_hash.js");
 var mutex = require('./mutex.js');
 var conf = require('./conf.js');
 var breadcrumbs = require('./breadcrumbs.js');
-
+var logger = require('./logger.js');
 
 
 function checkIfNewUnit(unit, callbacks) {
+	logger.debug("==checkIfNewUnit==");
 	if (storage.isKnownUnit(unit))
 		return callbacks.ifKnown();
 	db.query("SELECT 1 FROM units WHERE unit=?", [unit], function(rows){
@@ -32,6 +33,7 @@ function checkIfNewUnit(unit, callbacks) {
 }
 
 function checkIfNewJoint(objJoint, callbacks) {
+	logger.debug("==checkIfNewJoint==");
 	checkIfNewUnit(objJoint.unit.unit, {
 		ifKnown: callbacks.ifKnown,
 		ifKnownUnverified: callbacks.ifKnownUnverified,
@@ -46,6 +48,7 @@ function checkIfNewJoint(objJoint, callbacks) {
 
 
 function removeUnhandledJointAndDependencies(unit, onDone){
+	logger.debug("==removeUnhandledJointAndDependencies==");
 	db.takeConnectionFromPool(function(conn){
 		var arrQueries = [];
 		conn.addQuery(arrQueries, "BEGIN");
@@ -61,6 +64,7 @@ function removeUnhandledJointAndDependencies(unit, onDone){
 }
 
 function saveUnhandledJointAndDependencies(objJoint, arrMissingParentUnits, peer, onDone){
+	logger.debug("==saveUnhandledJointAndDependencies==");
 	db.takeConnectionFromPool(function(conn){
 		var unit = objJoint.unit.unit;
 		var sql = "INSERT "+conn.getIgnore()+" INTO dependencies (unit, depends_on_unit) VALUES " + arrMissingParentUnits.map(function(missing_unit){
@@ -82,7 +86,7 @@ function saveUnhandledJointAndDependencies(objJoint, arrMissingParentUnits, peer
 
 // handleDependentJoint called for each dependent unit
 function readDependentJointsThatAreReady(unit, handleDependentJoint){
-	//console.log("readDependentJointsThatAreReady "+unit);
+	logger.debug("==readDependentJointsThatAreReady==\n", unit);
 	var t=Date.now();
 	var from = unit ? "FROM dependencies AS src_deps JOIN dependencies USING(unit)" : "FROM dependencies";
 	var where = unit ? "WHERE src_deps.depends_on_unit="+db.escape(unit) : "";
@@ -98,8 +102,7 @@ function readDependentJointsThatAreReady(unit, handleDependentJoint){
 			HAVING count_missing_parents=0 \n\
 			ORDER BY NULL", 
 			function(rows){
-				//console.log(rows.length+" joints are ready");
-				//console.log("deps: "+(Date.now()-t));
+				logger.debug(rows.length+" joints are ready");
 				rows.forEach(function(row) {
 					db.query("SELECT json, peer, "+db.getUnixTimestamp("creation_date")+" AS creation_ts FROM unhandled_joints WHERE unit=?", [row.unit_for_json], function(internal_rows){
 						internal_rows.forEach(function(internal_row) {
@@ -114,7 +117,7 @@ function readDependentJointsThatAreReady(unit, handleDependentJoint){
 }
 
 function findLostJoints(handleLostJoints){
-	//console.log("findLostJoints");
+	logger.debug("==findLostJoints==");
 	db.query(
 		"SELECT DISTINCT depends_on_unit \n\
 		FROM dependencies \n\
@@ -122,7 +125,7 @@ function findLostJoints(handleLostJoints){
 		LEFT JOIN units ON depends_on_unit=units.unit \n\
 		WHERE unhandled_joints.unit IS NULL AND units.unit IS NULL AND dependencies.creation_date < " + db.addTime("-8 SECOND"), 
 		function(rows){
-			//console.log(rows.length+" lost joints");
+			logger.debug(rows.length+" lost joints");
 			if (rows.length === 0)
 				return;
 			handleLostJoints(rows.map(function(row){ return row.depends_on_unit; })); 
@@ -132,6 +135,7 @@ function findLostJoints(handleLostJoints){
 
 // onPurgedDependentJoint called for each purged dependent unit
 function purgeJointAndDependencies(objJoint, error, onPurgedDependentJoint, onDone){
+	logger.debug("==purgeJointAndDependencies==");
 	db.takeConnectionFromPool(function(conn){
 		var unit = objJoint.unit.unit;
 		var arrQueries = [];
@@ -152,6 +156,7 @@ function purgeJointAndDependencies(objJoint, error, onPurgedDependentJoint, onDo
 
 // onPurgedDependentJoint called for each purged dependent unit
 function purgeDependencies(unit, error, onPurgedDependentJoint, onDone){
+	logger.debug("==purgeDependencies==");
 	db.takeConnectionFromPool(function(conn){
 		var arrQueries = [];
 		conn.addQuery(arrQueries, "BEGIN");
@@ -168,6 +173,7 @@ function purgeDependencies(unit, error, onPurgedDependentJoint, onDone){
 
 // onPurgedDependentJoint called for each purged dependent unit
 function collectQueriesToPurgeDependentJoints(conn, arrQueries, unit, error, onPurgedDependentJoint, onDone){
+	logger.debug("==collectQueriesToPurgeDependentJoints==");
 	conn.query("SELECT unit, peer FROM dependencies JOIN unhandled_joints USING(unit) WHERE depends_on_unit=?", [unit], function(rows){
 		if (rows.length === 0)
 			return onDone();
@@ -190,12 +196,14 @@ function collectQueriesToPurgeDependentJoints(conn, arrQueries, unit, error, onP
 }
 
 function purgeUncoveredNonserialJointsUnderLock(){
+	logger.debug("==purgeUncoveredNonserialJointsUnderLock==");
 	mutex.lockOrSkip(["purge_uncovered"], function(unlock){
 		purgeUncoveredNonserialJoints(false, unlock);
 	});
 }
 
 function purgeUncoveredNonserialJoints(bByExistenceOfChildren, onDone){
+	logger.debug("==purgeUncoveredNonserialJoints(bByExistenceOfChildren==");
 	var cond = bByExistenceOfChildren ? "(SELECT 1 FROM parenthoods WHERE parent_unit=unit LIMIT 1) IS NULL" : "is_free=1";
 	var order_column = (conf.storage === 'mysql') ? 'creation_date' : 'rowid'; // this column must be indexed!
 	var byIndex = (bByExistenceOfChildren && conf.storage === 'sqlite') ? 'INDEXED BY bySequence' : '';
@@ -276,6 +284,7 @@ function purgeUncoveredNonserialJoints(bByExistenceOfChildren, onDone){
 
 // handleJoint is called for every joint younger than mci
 function readJointsSinceMci(mci, handleJoint, onDone){
+	logger.debug("==readJointsSinceMci==", mci);
 	db.query(
 		"SELECT units.unit FROM units LEFT JOIN archived_joints USING(unit) \n\
 		WHERE (is_stable=0 AND main_chain_index>=? OR main_chain_index IS NULL OR is_free=1) AND archived_joints.unit IS NULL \n\

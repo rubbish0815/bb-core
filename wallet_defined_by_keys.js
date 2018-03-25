@@ -17,6 +17,10 @@ var eventBus = require('./event_bus.js');
 var Definition = require("./definition.js");
 var ValidationUtils = require("./validation_utils.js");
 var breadcrumbs = require('./breadcrumbs.js');
+var logger = require('./logger.js');
+
+
+
 try{
 	var Bitcore = require('bitcore-lib');
 }
@@ -34,7 +38,7 @@ function loadBitcoreFromNearestParent(mod){
 		return require(mod.paths[0]+'/bitcore-lib');
 	}
 	catch(e){
-		console.log("bitcore-lib not found from "+mod.filename+", will try from its parent");
+		logger.debug("bitcore-lib not found from "+mod.filename+", will try from its parent");
 		return loadBitcoreFromNearestParent(mod.parent);
 	}
 }
@@ -123,7 +127,7 @@ function checkAndFinalizeWallet(wallet, onDone){
 	db.query("SELECT member_ready_date FROM wallets LEFT JOIN extended_pubkeys USING(wallet) WHERE wallets.wallet=?", [wallet], function(rows){
 		if (rows.length === 0){ // wallet not created yet or already deleted
 		//	throw Error("no wallet in checkAndFinalizeWallet");
-			console.log("no wallet in checkAndFinalizeWallet");
+			logger.debug("no wallet in checkAndFinalizeWallet");
 			return onDone ? onDone() : null;
 		}
 		if (rows.some(function(row){ return !row.member_ready_date; }))
@@ -184,7 +188,7 @@ function addWallet(wallet, xPubKey, account, arrWalletDefinitionTemplate, onDone
 			async.eachSeries(
 				arrDeviceAddresses,
 				function(device_address, cb2){
-					console.log("adding device "+device_address+' to wallet '+wallet);
+					logger.debug("adding device "+device_address+' to wallet '+wallet);
 					var fields = "wallet, device_address";
 					var values = "?,?";
 					var arrParams = [wallet, device_address];
@@ -210,7 +214,7 @@ function addWallet(wallet, xPubKey, account, arrWalletDefinitionTemplate, onDone
 			async.eachSeries(
 				arrSigningPaths,
 				function(signing_path, cb2){
-					console.log("adding signing path "+signing_path+' to wallet '+wallet);
+					logger.debug("adding signing path "+signing_path+' to wallet '+wallet);
 					var device_address = assocDeviceAddressesBySigningPaths[signing_path];
 					db.query(
 						"INSERT INTO wallet_signing_paths (wallet, signing_path, device_address) VALUES (?,?,?)", 
@@ -224,7 +228,7 @@ function addWallet(wallet, xPubKey, account, arrWalletDefinitionTemplate, onDone
 			);
 		}
 	], function(){
-		console.log("addWallet done "+wallet);
+		logger.debug("addWallet done "+wallet);
 		(arrDeviceAddresses.length === 1) ? onDone() : checkAndFullyApproveWallet(wallet, onDone);
 	});
 }
@@ -232,13 +236,13 @@ function addWallet(wallet, xPubKey, account, arrWalletDefinitionTemplate, onDone
 // initiator of the new wallet creates records about itself and sends requests to other devices
 function createWallet(xPubKey, account, arrWalletDefinitionTemplate, walletName, isSingleAddress, handleWallet){
 	var wallet = crypto.createHash("sha256").update(xPubKey, "utf8").digest("base64");
-	console.log('will create wallet '+wallet);
+	logger.debug('will create wallet '+wallet);
 	var arrDeviceAddresses = getDeviceAddresses(arrWalletDefinitionTemplate);
 	addWallet(wallet, xPubKey, account, arrWalletDefinitionTemplate, function(){
 		handleWallet(wallet);
 		if (arrDeviceAddresses.length === 1) // single sig
 			return;
-		console.log("will send offers");
+		logger.debug("will send offers");
 		// this continues in parallel while the callback handleWallet was already called
 		// We need arrOtherCosigners to make sure all cosigners know the pubkeys of all other cosigners, even when they were not paired.
 		// For example, there are 3 cosigners: A (me), B, and C. A is paired with B, A is paired with C, but B is not paired with C.
@@ -248,7 +252,7 @@ function createWallet(xPubKey, account, arrWalletDefinitionTemplate, walletName,
 			arrDeviceAddresses.forEach(function(device_address){
 				if (device_address === device.getMyDeviceAddress())
 					return;
-				console.log("sending offer to "+device_address);
+				logger.debug("sending offer to "+device_address);
 				sendOfferToCreateNewWallet(device_address, wallet, arrWalletDefinitionTemplate, walletName, arrOtherCosigners, isSingleAddress, null);
 				sendMyXPubKey(device_address, wallet, xPubKey);
 			});
@@ -277,7 +281,7 @@ function createSinglesigWalletWithExternalPrivateKey(xPubKey, account, device_ad
 
 // called from UI
 function createWalletByDevices(xPubKey, account, count_required_signatures, arrOtherDeviceAddresses, walletName, isSingleAddress, handleWallet){
-	console.log('createWalletByDevices: xPubKey='+xPubKey+", account="+account);
+	logger.debug('createWalletByDevices: xPubKey='+xPubKey+", account="+account);
 	if (arrOtherDeviceAddresses.length === 0)
 		createSinglesigWallet(xPubKey, account, walletName, handleWallet);
 	else
@@ -302,7 +306,7 @@ function approveWallet(wallet, xPubKey, account, arrWalletDefinitionTemplate, ar
 
 // called from UI
 function cancelWallet(wallet, arrDeviceAddresses, arrOtherCosigners){
-	console.log("canceling wallet "+wallet);
+	logger.debug("canceling wallet "+wallet);
 	// some of the cosigners might not be paired
 	/*
 	arrDeviceAddresses.forEach(function(device_address){
@@ -553,7 +557,7 @@ function deriveAddress(wallet, is_change, address_index, handleNewAddress){
 					if (!row.extended_pubkey)
 						throw Error("no extended_pubkey for wallet "+wallet);
 					params['pubkey@'+row.device_address] = derivePubkey(row.extended_pubkey, path);
-					console.log('pubkey for wallet '+wallet+' path '+path+' device '+row.device_address+' xpub '+row.extended_pubkey+': '+params['pubkey@'+row.device_address]);
+					logger.debug('pubkey for wallet '+wallet+' path '+path+' device '+row.device_address+' xpub '+row.extended_pubkey+': '+params['pubkey@'+row.device_address]);
 				});
 				var arrDefinition = Definition.replaceInTemplate(arrDefinitionTemplate, params);
 				var address = objectHash.getChash160(arrDefinition);
@@ -762,7 +766,7 @@ function readAllAddresses(wallet, handleAddresses){
 
 
 function forwardPrivateChainsToOtherMembersOfWallets(arrChains, arrWallets, conn, onSaved){
-	console.log("forwardPrivateChainsToOtherMembersOfWallets", arrWallets);
+	logger.debug("forwardPrivateChainsToOtherMembersOfWallets", arrWallets);
 	conn = conn || db;
 	conn.query(
 		"SELECT device_address FROM extended_pubkeys WHERE wallet IN(?) AND device_address!=?", 
@@ -789,7 +793,7 @@ function readDeviceAddressesControllingPaymentAddresses(conn, arrAddresses, hand
 }
 
 function forwardPrivateChainsToOtherMembersOfAddresses(arrChains, arrAddresses, conn, onSaved){
-	console.log("forwardPrivateChainsToOtherMembersOfAddresses", arrAddresses);
+	logger.debug("forwardPrivateChainsToOtherMembersOfAddresses", arrAddresses);
 	conn = conn || db;
 	readDeviceAddressesControllingPaymentAddresses(conn, arrAddresses, function(arrDeviceAddresses){
 		walletGeneral.forwardPrivateChainsToDevices(arrDeviceAddresses, arrChains, true, conn, onSaved);

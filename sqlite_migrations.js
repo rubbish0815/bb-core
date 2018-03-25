@@ -3,6 +3,9 @@
 var eventBus = require('./event_bus.js');
 var constants = require("./constants.js");
 var conf = require("./conf.js");
+var logger = require('./logger.js');
+
+
 
 var VERSION = 19;
 
@@ -17,7 +20,7 @@ function migrateDb(connection, onDone){
 		if (rows.length !== 1)
 			throw Error("PRAGMA user_version returned "+rows.length+" rows");
 		var version = rows[0].user_version;
-		console.log("db version "+version+", software version "+VERSION);
+		logger.debug("db version "+version+", software version "+VERSION);
 		if (version > VERSION)
 			throw Error("user version "+version+" > "+VERSION+": looks like you are using a new database with an old client");
 		if (version === VERSION)

@@ -6,6 +6,8 @@ var constants = require("./constants.js");
 var conf = require("./conf.js");
 var storage = require("./storage.js");
 var main_chain = require("./main_chain.js");
+var logger = require('./logger.js');
+
 
 
 function pickParentUnits(conn, arrWitnesses, onDone){
@@ -48,24 +50,24 @@ function adjustParentsToNotRetreatWitnessedLevel(conn, arrWitnesses, arrParentUn
 	var iterations = 0;
 	
 	function replaceExcludedParent(arrCurrentParentUnits, excluded_unit){
-		console.log('replaceExcludedParent '+arrCurrentParentUnits.join(', ')+" excluding "+excluded_unit);
+		logger.debug('replaceExcludedParent '+arrCurrentParentUnits.join(', ')+" excluding "+excluded_unit);
 		var arrNewExcludedUnits = [excluded_unit];
-		console.log('excluded parents: '+arrNewExcludedUnits.join(', '));
+		logger.debug('excluded parents: '+arrNewExcludedUnits.join(', '));
 		arrExcludedUnits = arrExcludedUnits.concat(arrNewExcludedUnits);
 		var arrParentsToKeep = _.difference(arrCurrentParentUnits, arrNewExcludedUnits);
 		conn.query("SELECT DISTINCT parent_unit FROM parenthoods WHERE child_unit IN(?)", [arrNewExcludedUnits], function(rows){
 			var arrCandidateReplacements = rows.map(function(row){ return row.parent_unit; });
-			console.log('candidate replacements: '+arrCandidateReplacements.join(', '));
+			logger.debug('candidate replacements: '+arrCandidateReplacements.join(', '));
 			conn.query(
 				"SELECT DISTINCT parent_unit FROM parenthoods WHERE parent_unit IN(?) AND child_unit NOT IN(?)", 
 				[arrCandidateReplacements, arrExcludedUnits], 
 				function(rows){
 					var arrCandidatesWithOtherChildren = rows.map(function(row){ return row.parent_unit; });
-					console.log('candidates with other children: '+arrCandidatesWithOtherChildren.join(', '));
+					logger.debug('candidates with other children: '+arrCandidatesWithOtherChildren.join(', '));
 					var arrReplacementParents = _.difference(arrCandidateReplacements, arrCandidatesWithOtherChildren);
-					console.log('replacements for excluded parents: '+arrReplacementParents.join(', '));
+					logger.debug('replacements for excluded parents: '+arrReplacementParents.join(', '));
 					var arrNewParents = arrParentsToKeep.concat(arrReplacementParents);
-					console.log('new parents: '+arrNewParents.join(', '));
+					logger.debug('new parents: '+arrNewParents.join(', '));
 					if (arrNewParents.length === 0)
 						throw Error("no new parents");
 					checkWitnessedLevelAndReplace(arrNewParents);
@@ -75,14 +77,14 @@ function adjustParentsToNotRetreatWitnessedLevel(conn, arrWitnesses, arrParentUn
 	}
 	
 	function checkWitnessedLevelAndReplace(arrCurrentParentUnits){
-		console.log('checkWitnessedLevelAndReplace '+arrCurrentParentUnits.join(', '));
+		logger.debug('checkWitnessedLevelAndReplace '+arrCurrentParentUnits.join(', '));
 		if (iterations > 0 && arrExcludedUnits.length === 0)
 			throw Error("infinite cycle");
 		iterations++;
 		determineWitnessedLevels(conn, arrWitnesses, arrCurrentParentUnits, function(child_witnessed_level, best_parent_witnessed_level, best_parent_unit){
 			if (child_witnessed_level >= best_parent_witnessed_level)
 				return handleAdjustedParents(arrCurrentParentUnits.sort());
-			console.log('wl would retreat from '+best_parent_witnessed_level+' to '+child_witnessed_level+', parents '+arrCurrentParentUnits.join(', '));
+			logger.debug('wl would retreat from '+best_parent_witnessed_level+' to '+child_witnessed_level+', parents '+arrCurrentParentUnits.join(', '));
 			replaceExcludedParent(arrCurrentParentUnits, best_parent_unit);
 		});
 	}
@@ -91,7 +93,7 @@ function adjustParentsToNotRetreatWitnessedLevel(conn, arrWitnesses, arrParentUn
 }
 
 function pickParentUnitsUnderWitnessedLevel(conn, arrWitnesses, max_wl, onDone){
-	console.log("looking for free parents under wl "+max_wl);
+	logger.debug("looking for free parents under wl "+max_wl);
 	conn.query(
 		"SELECT unit \n\
 		FROM units "+(conf.storage === 'sqlite' ? "INDEXED BY byFree" : "")+" \n\
@@ -118,7 +120,7 @@ function pickDeepParentUnits(conn, arrWitnesses, max_wl, onDone){
 	// fixed: an attacker could cover all free compatible units with his own incompatible ones, then those that were not on MC will be never included
 	//var cond = bDeep ? "is_on_main_chain=1" : "is_free=1";
 	
-	console.log("looking for deep parents, max_wl="+max_wl);
+	logger.debug("looking for deep parents, max_wl="+max_wl);
 	var and_wl = (max_wl === null) ? '' : "AND +is_on_main_chain=1 AND witnessed_level<"+max_wl;
 	conn.query(
 		"SELECT unit \n\
@@ -152,7 +154,7 @@ function checkWitnessedLevelNotRetreatingAndLookLower(conn, arrWitnesses, arrPar
 	determineWitnessedLevels(conn, arrWitnesses, arrParentUnits, function(child_witnessed_level, best_parent_witnessed_level){
 		if (child_witnessed_level >= best_parent_witnessed_level)
 			return onDone(null, arrParentUnits);
-		console.log("witness level would retreat from "+best_parent_witnessed_level+" to "+child_witnessed_level+" if parents = "+arrParentUnits.join(', ')+", will look for older parents");
+		logger.debug("witness level would retreat from "+best_parent_witnessed_level+" to "+child_witnessed_level+" if parents = "+arrParentUnits.join(', ')+", will look for older parents");
 		bRetryDeeper
 			? pickDeepParentUnits(conn, arrWitnesses, best_parent_witnessed_level, onDone)
 			: pickParentUnitsUnderWitnessedLevel(conn, arrWitnesses, best_parent_witnessed_level, onDone);
@@ -188,7 +190,7 @@ function adjustLastStableMcBallAndParents(conn, last_stable_mc_ball_unit, arrPar
 			});
 			return;
 		}
-		console.log('will adjust last stable ball because '+last_stable_mc_ball_unit+' is not stable in view of parents '+arrParentUnits.join(', '));
+		logger.debug('will adjust last stable ball because '+last_stable_mc_ball_unit+' is not stable in view of parents '+arrParentUnits.join(', '));
 		if (arrParentUnits.length > 1){ // select only one parent
 			pickDeepParentUnits(conn, arrWitnesses, null, function(err, arrAdjustedParentUnits){
 				if (err)

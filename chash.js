@@ -2,6 +2,7 @@
 "use strict";
 var crypto = require('crypto');
 var base32 = require('thirty-two');
+var logger = require('./logger.js');
 
 var PI = "14159265358979323846264338327950288419716939937510";
 var zeroString = "00000000";
@@ -29,7 +30,7 @@ function calcOffsets(chash_length){
 		if (offset >= chash_length)
 			break;
 		arrOffsets.push(offset);
-		//console.log("index="+index+", offset="+offset);
+		logger.debug("index="+index+", offset="+offset);
 		index++;
 	}
 
@@ -114,30 +115,30 @@ function bin2buffer(bin){
 
 function getChecksum(clean_data){
 	var full_checksum = crypto.createHash("sha256").update(clean_data).digest();
-	//console.log(full_checksum);
+	logger.debug(full_checksum);
 	var checksum = new Buffer([full_checksum[5], full_checksum[13], full_checksum[21], full_checksum[29]]);
 	return checksum;
 }
 
 function getChash(data, chash_length){
-	//console.log("getChash: "+data);
+	logger.debug("getChash: "+data);
 	checkLength(chash_length);
 	var hash = crypto.createHash((chash_length === 160) ? "ripemd160" : "sha256").update(data, "utf8").digest();
-	//console.log("hash", hash);
+	logger.debug("hash", hash);
 	var truncated_hash = (chash_length === 160) ? hash.slice(4) : hash; // drop first 4 bytes if 160
-	//console.log("clean data", truncated_hash);
+	logger.debug("clean data", truncated_hash);
 	var checksum = getChecksum(truncated_hash);
-	//console.log("checksum", checksum);
-	//console.log("checksum", buffer2bin(checksum));
+	logger.debug("checksum", checksum);
+	logger.debug("checksum", buffer2bin(checksum));
 	
 	var binCleanData = buffer2bin(truncated_hash);
 	var binChecksum = buffer2bin(checksum);
 	var binChash = mixChecksumIntoCleanData(binCleanData, binChecksum);
-	//console.log(binCleanData.length, binChecksum.length, binChash.length);
+	logger.debug(binCleanData.length, binChecksum.length, binChash.length);
 	var chash = bin2buffer(binChash);
-	//console.log("chash     ", chash);
+	logger.debug("chash     ", chash);
 	var encoded = (chash_length === 160) ? base32.encode(chash).toString() : chash.toString('base64');
-	//console.log(encoded);
+	logger.debug(encoded);
 	return encoded;
 }
 
@@ -157,16 +158,16 @@ function isChashValid(encoded){
 		var chash = (encoded_len === 32) ? base32.decode(encoded) : new Buffer(encoded, 'base64');
 	}
 	catch(e){
-		console.log(e);
+		logger.error(e);
 		return false;
 	}
 	var binChash = buffer2bin(chash);
 	var separated = separateIntoCleanDataAndChecksum(binChash);
 	var clean_data = bin2buffer(separated.clean_data);
-	//console.log("clean data", clean_data);
+	logger.debug("clean data", clean_data);
 	var checksum = bin2buffer(separated.checksum);
-	//console.log(checksum);
-	//console.log(getChecksum(clean_data));
+	logger.debug(checksum);
+	logger.debug(getChecksum(clean_data));
 	return checksum.equals(getChecksum(clean_data));
 }
 

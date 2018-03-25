@@ -16,6 +16,9 @@ var Definition = require("./definition.js");
 var ValidationUtils = require("./validation_utils.js");
 var indivisibleAsset = require('./indivisible_asset.js');
 var divisibleAsset = require('./divisible_asset.js');
+var logger = require('./logger.js');
+
+
 
 var MAX_INT32 = Math.pow(2, 31) - 1;
 
@@ -203,7 +206,7 @@ function addNewSharedAddress(address, arrDefinition, assocSignersByPath, bForwar
 					[address, signerInfo.address, signing_path, signerInfo.member_signing_path, signerInfo.device_address]);
 			}
 			async.series(arrQueries, function(){
-				console.log('added new shared address '+address);
+				logger.debug('added new shared address '+address);
 				eventBus.emit("new_address-"+address);
 				if (conf.bLight)
 					network.addLightWatchedAddress(address);
@@ -423,7 +426,7 @@ function forwardPrivateChainsToOtherMembersOfAddresses(arrChains, arrAddresses, 
 		"SELECT device_address FROM shared_address_signing_paths WHERE shared_address IN(?) AND device_address!=?", 
 		[arrAddresses, device.getMyDeviceAddress()], 
 		function(rows){
-			console.log("shared address devices: "+rows.length);
+			logger.debug("shared address devices: "+rows.length);
 			var arrDeviceAddresses = rows.map(function(row){ return row.device_address; });
 			walletGeneral.forwardPrivateChainsToDevices(arrDeviceAddresses, arrChains, true, conn, onSaved);
 		}

@@ -3,6 +3,7 @@
 var async = require('async');
 var db = require('./db.js');
 var device = require('./device.js');
+var logger = require('./logger.js');
 
 
 
@@ -26,11 +27,11 @@ function sendPrivatePayments(device_address, arrChains, bForwarded, conn, onSave
 }
 
 function forwardPrivateChainsToDevices(arrDeviceAddresses, arrChains, bForwarded, conn, onSaved){
-	console.log("devices: "+arrDeviceAddresses);
+	logger.debug("devices: "+arrDeviceAddresses);
 	async.eachSeries(
 		arrDeviceAddresses,
 		function(device_address, cb){
-			console.log("forwarding to device "+device_address);
+			logger.debug("forwarding to device "+device_address);
 			sendPrivatePayments(device_address, arrChains, bForwarded, conn, cb);
 		},
 		onSaved

@@ -1,6 +1,9 @@
 /*jslint node: true */
 "use strict";
 var crypto = require('crypto');
+var logger = require('./logger.js');
+
+
 
 function hash(str){
 	return crypto.createHash("sha256").update(str, "utf8").digest("base64");
@@ -129,7 +132,7 @@ function testProofs(){
 				throw "proof failed len="+len+", i="+i;
 		}
 	}
-	console.log("proofs ok");
+	logger.debug("proofs ok");
 }
 
 function testRoot(){
@@ -141,7 +144,7 @@ function testRoot(){
 	var root = hash( hash( hash(arrElements[0]) + hash(arrElements[1]) ) + hash( hash(arrElements[2]) + hash(arrElements[2]) ) );
 	if (root !== getMerkleRoot(arrElements))
 		throw "3-element root failed";
-	console.log("root ok");
+	logger.debug("root ok");
 }
 
 testProofs();

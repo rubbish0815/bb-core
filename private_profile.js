@@ -18,7 +18,7 @@ returns objPrivateProfile {
 */
 function getPrivateProfileFromJsonBase64(privateProfileJsonBase64){
 	var privateProfileJson = Buffer(privateProfileJsonBase64, 'base64').toString('utf8');
-	console.log(privateProfileJson);
+	logger.debug(privateProfileJson);
 	try{
 		var objPrivateProfile = JSON.parse(privateProfileJson);
 	}
@@ -63,7 +63,7 @@ function parseAndValidatePrivateProfile(objPrivateProfile, onDone){
 			function(rows){
 				var bMyAddress = (rows.length > 0);
 				if (bMyAddress && bHasHiddenFields){
-					console.log("profile of my address but has hidden fields");
+					logger.debug("profile of my address but has hidden fields");
 					bMyAddress = false;
 				}
 				onDone(null, payload.address, attestor_address, bMyAddress);

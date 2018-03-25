@@ -4,6 +4,9 @@ var _ = require('lodash');
 var async = require('async');
 var sqlite_migrations = require('./sqlite_migrations');
 var EventEmitter = require('events').EventEmitter;
+var logger = require('./logger.js');
+
+
 
 var bCordova = (typeof window === 'object' && window.cordova);
 var sqlite3;
@@ -17,7 +20,7 @@ if (bCordova){
 else{
 	sqlite3 = require('sqlite3');//.verbose();
 	path = require('./desktop_app.js'+'').getAppDataDir() + '/';
-	console.log("path="+path);
+	logger.debug("path="+path);
 }
 
 module.exports = function(db_name, MAX_CONNECTIONS, bReadOnly){
@@ -38,11 +41,11 @@ module.exports = function(db_name, MAX_CONNECTIONS, bReadOnly){
 	var arrQueue = [];
 
 	function connect(handleConnection){
-		console.log("opening new db connection");
+		logger.log("opening new db connection");
 		var db = openDb(function(err){
 			if (err)
 				throw Error(err);
-			console.log("opened db");
+			logger.debug("opened db");
 			connection.query("PRAGMA foreign_keys = 1", function(){
 				connection.query("PRAGMA busy_timeout=30000", function(){
 					connection.query("PRAGMA journal_mode=WAL", function(){
@@ -63,7 +66,7 @@ module.exports = function(db_name, MAX_CONNECTIONS, bReadOnly){
 			bInUse: true,
 			
 			release: function(){
-				//console.log("released connection");
+				logger.debug("released connection");
 				this.bInUse = false;
 				if (arrQueue.length === 0)
 					return;
@@ -81,7 +84,7 @@ module.exports = function(db_name, MAX_CONNECTIONS, bReadOnly){
 					last_arg = function(){};
 
 				var sql = arguments[0];
-				//console.log("======= query: "+sql);
+				logger.debug("======= query: "+sql);
 				var bSelect = !!sql.match(/^SELECT/i);
 				var count_arguments_without_callback = bHasCallback ? (arguments.length-1) : arguments.length;
 				var new_args = [];
@@ -95,7 +98,7 @@ module.exports = function(db_name, MAX_CONNECTIONS, bReadOnly){
 				
 				// add callback with error handling
 				new_args.push(function(err, result){
-					//console.log("query done: "+sql);
+					//logger.debug("query done: "+sql);
 					if (err){
 						console.error("\nfailed query:", new_args);
 						throw Error(err+"\n"+sql+"\n"+new_args[1].map(function(param){ if (param === null) return 'null'; if (param === undefined) return 'undefined'; return param;}).join(', '));
@@ -109,7 +112,7 @@ module.exports = function(db_name, MAX_CONNECTIONS, bReadOnly){
 					//console.log("changes="+this.changes+", affected="+result.affectedRows);
 					var consumed_time = Date.now() - start_ts;
 					if (consumed_time > 25)
-						console.log("long query took "+consumed_time+"ms:\n"+new_args.filter(function(a, i){ return (i<new_args.length-1); }).join(", ")+"\nload avg: "+require('os').loadavg().join(', '));
+						logger.debug("long query took "+consumed_time+"ms:\n"+new_args.filter(function(a, i){ return (i<new_args.length-1); }).join(", ")+"\nload avg: "+require('os').loadavg().join(', '));
 					last_arg(result);
 				});
 				
@@ -159,9 +162,9 @@ module.exports = function(db_name, MAX_CONNECTIONS, bReadOnly){
 	function takeConnectionFromPool(handleConnection){
 
 		if (!bReady){
-			console.log("takeConnectionFromPool will wait for ready");
+			logger.debug("takeConnectionFromPool will wait for ready");
 			eventEmitter.once('ready', function(){
-				console.log("db is now ready");
+				logger.log("db is now ready");
 				takeConnectionFromPool(handleConnection);
 			});
 			return;
@@ -170,7 +173,7 @@ module.exports = function(db_name, MAX_CONNECTIONS, bReadOnly){
 		// first, try to find a free connection
 		for (var i=0; i<arrConnections.length; i++)
 			if (!arrConnections[i].bInUse){
-				//console.log("reusing previously opened connection");
+				logger.debug("reusing previously opened connection");
 				arrConnections[i].bInUse = true;
 				return handleConnection(arrConnections[i]);
 			}
@@ -180,7 +183,7 @@ module.exports = function(db_name, MAX_CONNECTIONS, bReadOnly){
 			return connect(handleConnection);
 
 		// third, queue it
-		//console.log("queuing");
+		//logger.debug("queuing");
 		arrQueue.push(handleConnection);
 	}
 	
@@ -201,7 +204,7 @@ module.exports = function(db_name, MAX_CONNECTIONS, bReadOnly){
 
 	// takes a connection from the pool, executes the single query on this connection, and immediately releases the connection
 	function query(){
-		//console.log(arguments[0]);
+		//logger.debug(arguments[0]);
 		var args = arguments;
 		takeConnectionFromPool(function(connection){
 			var last_arg = args[args.length - 1];
@@ -363,31 +366,31 @@ function getDatabaseDirPath(){
 
 function createDatabaseIfNecessary(db_name, onDbReady){
 	
-	console.log('createDatabaseIfNecessary '+db_name);
+	logger.log('createDatabaseIfNecessary '+db_name);
 	var initial_db_filename = 'initial.' + db_name;
 
 	// on mobile platforms, copy initial sqlite file from app root to data folder where we can open it for writing
 	if (bCordova){
-		console.log("will wait for deviceready");
+		logger.debug("will wait for deviceready");
 		document.addEventListener("deviceready", function onDeviceReady(){
-			console.log("deviceready handler");
-			console.log("data dir: "+window.cordova.file.dataDirectory);
-			console.log("app dir: "+window.cordova.file.applicationDirectory);
+			logger.debug("deviceready handler");
+			logger.log("data dir: "+window.cordova.file.dataDirectory);
+			logger.log("app dir: "+window.cordova.file.applicationDirectory);
 			window.requestFileSystem(LocalFileSystem.PERSISTENT, 0, function onFileSystemSuccess(fs){
 				window.resolveLocalFileSystemURL(getDatabaseDirPath() + '/' + db_name, function(fileEntry){
-					console.log("database file already exists");
+					logger.log("database file already exists");
 					onDbReady();
 				}, function onSqliteNotInited(err) { // file not found
-					console.log("will copy initial database file");
+					logger.debug("will copy initial database file");
 					window.resolveLocalFileSystemURL(window.cordova.file.applicationDirectory + "/www/" + initial_db_filename, function(fileEntry) {
-						console.log("got initial db fileentry");
+						logger.debug("got initial db fileentry");
 						// get parent dir
 						window.resolveLocalFileSystemURL(getParentDirPath(), function(parentDirEntry) {
-							console.log("resolved parent dir");
+							logger.debug("resolved parent dir");
 							parentDirEntry.getDirectory(getDatabaseDirName(), {create: true}, function(dbDirEntry){
-								console.log("resolved db dir");
+								logger.debug("resolved db dir");
 								fileEntry.copyTo(dbDirEntry, db_name, function(){
-									console.log("copied initial cordova database");
+									logger.debug("copied initial cordova database");
 									onDbReady();
 								}, function(err){
 									throw Error("failed to copyTo: "+JSON.stringify(err));
@@ -410,16 +413,16 @@ function createDatabaseIfNecessary(db_name, onDbReady){
 	else{ // copy initial db to app folder
 		var fs = require('fs'+'');
 		fs.stat(path + db_name, function(err, stats){
-			console.log("stat "+err);
+			logger.debug("stat "+err);
 			if (!err) // already exists
 				return onDbReady();
-			console.log("will copy initial db");
+			logger.debug("will copy initial db");
 			var mode = parseInt('700', 8);
 			var parent_dir = require('path'+'').dirname(path);
 			fs.mkdir(parent_dir, mode, function(err){
-				console.log('mkdir '+parent_dir+': '+err);
+				logger.debug('mkdir '+parent_dir+': '+err);
 				fs.mkdir(path, mode, function(err){
-					console.log('mkdir '+path+': '+err);
+					logger.debug('mkdir '+path+': '+err);
 					fs.createReadStream(__dirname + '/' + initial_db_filename).pipe(fs.createWriteStream(path + db_name)).on('finish', onDbReady);
 				});
 			});

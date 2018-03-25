@@ -145,11 +145,7 @@ String.prototype.padding = function(n, c)
 };
 
 var clog = console.log;
-//console.log = function(){};
 
-//exports.start = start;
-//exports.stop = stop;
-//exports.increment = increment;
 exports.print = print;
 exports.mark_start = mark_start;
 exports.mark_end = mark_end;
@@ -158,4 +154,3 @@ exports.mark_end = mark_end;
 exports.start = function(){};
 exports.stop = function(){};
 exports.increment = function(){};
-//exports.print = function(){};

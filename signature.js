@@ -1,6 +1,9 @@
 /*jslint node: true */
 "use strict";
 var ecdsa = require('secp256k1');
+var logger = require('./logger.js');
+
+
 
 exports.sign = function(hash, priv_key){
 	var res = ecdsa.sign(hash, priv_key);
@@ -13,7 +16,7 @@ exports.verify = function(hash, b64_sig, b64_pub_key){
 		return ecdsa.verify(hash, signature, new Buffer(b64_pub_key, "base64"));
 	}
 	catch(e){
-		console.log('signature verification exception: '+e.toString());
+		logger.error('signature verification exception: '+e.toString());
 		return false;
 	}
 };

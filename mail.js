@@ -1,6 +1,7 @@
 'use strict';
 var child_process = require('child_process');
 var conf = require('./conf.js');
+var logger = require('./logger.js');
 var DNS;
 
 if (conf.smtpTransport === 'direct' && !(typeof window !== 'undefined' && window && window.cordova)) {
@@ -66,7 +67,7 @@ function sendMailDirectly(params, cb) {
 				console.error("failed to send mail to "+params.to+": "+error);
 				return cb(error);
 			}
-			console.log('Message sent: %s', info.messageId);
+			logger.debug('Message sent: %s', info.messageId);
 			cb(null, info);
 		});
 	});
@@ -102,7 +103,7 @@ function sendMailThroughRelay(params, cb){
 			console.error("failed to send mail to "+params.to+": "+error+"\n", error);
 			return cb(error);
 		}
-		console.log('Message sent: %s', info.messageId);
+		logger.debug('Message sent: %s', info.messageId);
 		cb(null, info);
 	});
 }

@@ -9,6 +9,8 @@ var constants = require("./constants.js");
 var conf = require("./conf.js");
 var mc_outputs = require("./mc_outputs.js");
 var profiler = require("./profiler.js");
+var logger = require('./logger.js');
+
 
 
 function calcWitnessEarnings(conn, type, from_main_chain_index, to_main_chain_index, address, callbacks){
@@ -59,7 +61,7 @@ function readUnitOnMcIndex(conn, main_chain_index, handleUnit){
 }
 
 function updatePaidWitnesses(conn, cb){
-	console.log("updating paid witnesses");
+	logger.debug("==updatePaidWitnesses==");
 	profiler.start();
 	storage.readLastStableMcIndex(conn, function(last_stable_mci){
 		profiler.stop('mc-wc-readLastStableMCI');
@@ -69,6 +71,7 @@ function updatePaidWitnesses(conn, cb){
 }
 
 function buildPaidWitnessesTillMainChainIndex(conn, to_main_chain_index, cb){
+	logger.debug("==buildPaidWitnessesTillMainChainIndex==");
 	profiler.start();
 	var cross = (conf.storage === 'sqlite') ? 'CROSS' : ''; // correct the query planner
 	conn.query(
@@ -97,7 +100,8 @@ function buildPaidWitnessesTillMainChainIndex(conn, to_main_chain_index, cb){
 }
 
 function buildPaidWitnessesForMainChainIndex(conn, main_chain_index, cb){
-	console.log("updating paid witnesses mci "+main_chain_index);
+	logger.debug("==buildPaidWitnessesForMainChainIndex==");
+	logger.debug("updating paid witnesses mci "+main_chain_index);
 	profiler.start();
 	conn.query(
 		"SELECT COUNT(*) AS count, SUM(CASE WHEN is_stable=1 THEN 1 ELSE 0 END) AS count_on_stable_mc \n\
@@ -132,7 +136,7 @@ function buildPaidWitnessesForMainChainIndex(conn, main_chain_index, cb){
 									buildPaidWitnesses(conn, row, arrWitnesses, cb2);
 								},
 								function(err){
-									console.log(rt, et);
+									logger.debug(rt, et);
 									if (err) // impossible
 										throw Error(err);
 									//var t=Date.now();
@@ -148,7 +152,7 @@ function buildPaidWitnessesForMainChainIndex(conn, main_chain_index, cb){
 										GROUP BY address",
 										[main_chain_index],
 										function(){
-											//console.log(Date.now()-t);
+											//logger.debug(Date.now()-t);
 											conn.query(conn.dropTemporaryTable("paid_witness_events_tmp"), function(){
 												profiler.stop('mc-wc-aggregate-events');
 												cb();

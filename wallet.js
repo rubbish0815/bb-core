@@ -24,6 +24,9 @@ var profiler = require('./profiler.js');
 var breadcrumbs = require('./breadcrumbs.js');
 var balances = require('./balances');
 var Mnemonic = require('bitcore-mnemonic');
+var logger = require('./logger.js');
+
+
 
 var message_counter = 0;
 var assocLastFailedAssetMetadataTimestamps = {};
@@ -327,7 +330,7 @@ function handleMessageFromHub(ws, json, device_pubkey, bIndirectCorrespondent, c
 						var objJoint = {unit: objUnit, unsigned: true};
 						eventBus.once("validated-"+objUnit.unit, function(bValid){
 							if (!bValid){
-								console.log("===== unit in signing request is invalid");
+								logger.debug("===== unit in signing request is invalid");
 								return;
 							}
 							// This event should trigger a confirmation dialog.
@@ -402,10 +405,10 @@ function handleMessageFromHub(ws, json, device_pubkey, bIndirectCorrespondent, c
 
 			var checkIfAllValidated = function(){
 				if (!assocValidatedByKey) // duplicate call - ignore
-					return console.log('duplicate call of checkIfAllValidated');
+					return logger.debug('duplicate call of checkIfAllValidated');
 				for (var key in assocValidatedByKey)
 					if (!assocValidatedByKey[key])
-						return console.log('not all private payments validated yet');
+						return logger.debug('not all private payments validated yet');
 				assocValidatedByKey = null; // to avoid duplicate calls
 				if (!body.forwarded){
 					emitNewPrivatePaymentReceived(from_address, arrChains, current_message_counter);
@@ -432,21 +435,21 @@ function handleMessageFromHub(ws, json, device_pubkey, bIndirectCorrespondent, c
 					assocValidatedByKey[key] = false;
 					network.handleOnlinePrivatePayment(ws, arrPrivateElements, true, {
 						ifError: function(error){
-							console.log("handleOnlinePrivatePayment error: "+error);
+							logger.warn("handleOnlinePrivatePayment error: "+error);
 							cb("an error"); // do not leak error message to the hub
 						},
 						ifValidationError: function(unit, error){
-							console.log("handleOnlinePrivatePayment validation error: "+error);
+							logger.warn("handleOnlinePrivatePayment validation error: "+error);
 							cb("an error"); // do not leak error message to the hub
 						},
 						ifAccepted: function(unit){
-							console.log("handleOnlinePrivatePayment accepted");
+							logger.debug("handleOnlinePrivatePayment accepted");
 							assocValidatedByKey[key] = true;
 							cb(); // do not leak unit info to the hub
 						},
 						// this is the most likely outcome for light clients
 						ifQueued: function(){
-							console.log("handleOnlinePrivatePayment queued, will wait for "+key);
+							logger.debug("handleOnlinePrivatePayment queued, will wait for "+key);
 							eventBus.once(key, function(bValid){
 								if (!bValid)
 									return cancelAllKeys();
@@ -454,7 +457,7 @@ function handleMessageFromHub(ws, json, device_pubkey, bIndirectCorrespondent, c
 								if (bParsingComplete)
 									checkIfAllValidated();
 								else
-									console.log('parsing incomplete yet');
+									logger.debug('parsing incomplete yet');
 							});
 							cb();
 						}
@@ -493,7 +496,7 @@ function handleMessageFromHub(ws, json, device_pubkey, bIndirectCorrespondent, c
 			eventBus.once('saved_unit-'+unit, emitPn);
 			storage.readJoint(db, unit, {
 				ifNotFound: function(){
-					console.log("received payment notification for unit "+unit+" which is not known yet, will wait for it");
+					logger.debug("received payment notification for unit "+unit+" which is not known yet, will wait for it");
 					callbacks.ifOk();
 				},
 				ifFound: function(objJoint){
@@ -511,7 +514,7 @@ function handleMessageFromHub(ws, json, device_pubkey, bIndirectCorrespondent, c
 
 
 function forwardPrivateChainsToOtherMembersOfOutputAddresses(arrChains, conn, onSaved){
-	console.log("forwardPrivateChainsToOtherMembersOfOutputAddresses", arrChains);
+	logger.debug("==forwardPrivateChainsToOtherMembersOfOutputAddresses==\n", arrChains);
 	var assocOutputAddresses = {};
 	arrChains.forEach(function(arrPrivateElements){
 		var objHeadPrivateElement = arrPrivateElements[0];
@@ -524,7 +527,7 @@ function forwardPrivateChainsToOtherMembersOfOutputAddresses(arrChains, conn, on
 			assocOutputAddresses[objHeadPrivateElement.output.address] = true;
 	});
 	var arrOutputAddresses = Object.keys(assocOutputAddresses);
-	console.log("output addresses", arrOutputAddresses);
+	logger.debug("output addresses", arrOutputAddresses);
 	conn = conn || db;
 	if (!onSaved)
 		onSaved = function(){};
@@ -567,7 +570,7 @@ eventBus.on("new_direct_private_chains", forwardPrivateChainsToOtherMembersOfOut
 
 
 function emitNewPrivatePaymentReceived(payer_device_address, arrChains, message_counter){
-	console.log('emitNewPrivatePaymentReceived');
+	logger.debug("==emitNewPrivatePaymentReceived==");
 	walletGeneral.readMyAddresses(function(arrAddresses){
 		var assocAmountsByAsset = {};
 		var assocMyReceivingAddresses = {};
@@ -590,7 +593,7 @@ function emitNewPrivatePaymentReceived(payer_device_address, arrChains, message_
 				assocMyReceivingAddresses[output.address] = true;
 			}
 		});
-		console.log('assocAmountsByAsset', assocAmountsByAsset);
+		logger.debug('assocAmountsByAsset', assocAmountsByAsset);
 		var arrMyReceivingAddresses = Object.keys(assocMyReceivingAddresses);
 		if (arrMyReceivingAddresses.length === 0)
 			return;
@@ -748,7 +751,7 @@ function readAssetMetadata(arrAssets, handleMetadata){
 					return;
 				fetchAssetMetadata(asset, function(err, objMetadata){
 					if (err)
-						return console.log(err);
+						return logger.error(err);
 					assocAssetMetadata[asset] = {
 						metadata_unit: objMetadata.metadata_unit,
 						decimals: objMetadata.decimals,
@@ -873,7 +876,7 @@ function readTransactionHistory(opts, handleHistory){
 				if (row.from_address)
 					assocMovements[row.unit].has_minus = true;
 			}
-		//	console.log(require('util').inspect(assocMovements));
+		//	logger.debug(require('util').inspect(assocMovements));
 			var arrTransactions = [];
 			async.forEachOfSeries(
 				assocMovements,
@@ -1743,9 +1746,9 @@ function claimBackOldTextcoins(to_address, days){
 				function(row, cb){
 					receiveTextCoin(row.mnemonic, to_address, function(err, unit, asset){
 						if (err)
-							console.log("failed claiming back old textcoin "+row.mnemonic+": "+err);
+							logger.error("failed claiming back old textcoin "+row.mnemonic+": "+err);
 						else
-							console.log("claimed back mnemonic "+row.mnemonic+", unit "+unit+", asset "+asset);
+							logger.debug("claimed back mnemonic "+row.mnemonic+", unit "+unit+", asset "+asset);
 						cb();
 					});
 				}

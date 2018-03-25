@@ -1,10 +1,13 @@
 /*jslint node: true */
 "use strict";
 var mysql = require('mysql');
+var logger = require('./logger.js');
+
+
 
 module.exports = function(connection_or_pool){
 
-	console.log("constructor");
+	logger.debug("DB::Constructor");
 	var safe_connection = connection_or_pool;
 	safe_connection.original_query = safe_connection.query;
 	safe_connection.original_release = safe_connection.release;
@@ -32,9 +35,9 @@ module.exports = function(connection_or_pool){
 				/*
 				//console.error("code: "+(typeof err.code));
 				if (false && err.code === 'ER_LOCK_DEADLOCK'){
-					console.log("deadlock, will retry later");
+					logger.debug("deadlock, will retry later");
 					setTimeout(function(){
-						console.log("retrying deadlock query "+q.sql+" after timeout ...");
+						logger.debug("retrying deadlock query "+q.sql+" after timeout ...");
 						connection_or_pool.original_query.apply(connection_or_pool, new_args);
 					}, 100);
 					return;
@@ -43,9 +46,9 @@ module.exports = function(connection_or_pool){
 			}
 			last_arg(results, fields);
 		});
-		//console.log(new_args);
+		logger.debug(new_args);
 		q = connection_or_pool.original_query.apply(connection_or_pool, new_args);
-		//console.log(q.sql);
+		logger.debug("DB::", q.sql);
 		return q;
 	};
 
@@ -54,7 +57,7 @@ module.exports = function(connection_or_pool){
 	};
 	
 	safe_connection.release = function(){
-		//console.log("releasing connection");
+		logger.debug("DB::releasing connection");
 		connection_or_pool.original_release();
 	};
 
@@ -81,7 +84,7 @@ module.exports = function(connection_or_pool){
 		connection_or_pool.getConnection(function(err, new_connection) {
 			if (err)
 				throw err;
-			console.log("got connection from pool");
+			logger.debug("DB::got connection from pool");
 			handleConnection(new_connection.original_query ? new_connection : module.exports(new_connection));
 		});
 	};

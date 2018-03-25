@@ -1,6 +1,7 @@
 /*jslint node: true */
 "use strict";
 require('./enforce_singleton.js');
+var logger = require('./logger.js');
 
 function mergeExports(anotherModule){
 	for (var key in anotherModule)
@@ -81,24 +82,24 @@ if (typeof window === 'undefined' || !window.cordova){ // desktop
 	if (appRootDir !== __dirname){
 		try{
 			mergeExports(require(appRootDir + '/conf.js'));
-			console.log('merged app root conf from ' + appRootDir + '/conf.js');
+			logger.debug('merged app root conf from ' + appRootDir + '/conf.js');
 		}
 		catch(e){
-			console.log("not using app root conf: "+e);
+			logger.debug("not using app root conf: "+e);
 		}
 	}
 	else
-		console.log("I'm already at the root");
+		logger.debug("I'm already at the root");
 	
 	// merge conf from user home directory, if any.
 	// Note that it is json rather than js to avoid code injection
 	var appDataDir = desktopApp.getAppDataDir();
 	try{
 		mergeExports(require(appDataDir + '/conf.json'));
-		console.log('merged user conf from ' + appDataDir + '/conf.json');
+		logger.debug('merged user conf from ' + appDataDir + '/conf.json');
 	}
 	catch(e){
-		console.log('not using user conf: '+e);
+		logger.debug('not using user conf: '+e);
 	}
 }
 

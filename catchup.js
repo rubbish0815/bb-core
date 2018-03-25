@@ -8,6 +8,7 @@ var db = require('./db.js');
 var mutex = require('./mutex.js');
 var validation = require('./validation.js');
 var witnessProof = require('./witness_proof.js');
+var logger = require('./logger.js');
 
 
 
@@ -80,7 +81,7 @@ function prepareCatchupChain(catchupRequest, callbacks){
 				callbacks.ifError(err);
 			else
 				callbacks.ifOk(objCatchupChain);
-			console.log("prepareCatchupChain since mci "+last_stable_mci+" took "+(Date.now()-start_ts)+'ms');
+			logger.log("prepareCatchupChain since mci "+last_stable_mci+" took "+(Date.now()-start_ts)+'ms');
 			unlock();
 		});
 	});
@@ -313,7 +314,7 @@ function processHashTree(arrBalls, callbacks){
 								// insert even if it already exists in balls, because we need to define max_mci by looking outside this hash tree
 								conn.query("INSERT "+conn.getIgnore()+" INTO hash_tree_balls (ball, unit) VALUES(?,?)", [objBall.ball, objBall.unit], function(){
 									cb();
-									//console.log("inserted unit "+objBall.unit, objBall.ball);
+									logger.debug("inserted unit "+objBall.unit, objBall.ball);
 								});
 							}
 							
@@ -334,7 +335,7 @@ function processHashTree(arrBalls, callbacks){
 							if (!objBall.parent_balls)
 								return checkSkiplistBallsExist();
 							conn.query("SELECT ball FROM hash_tree_balls WHERE ball IN(?)", [objBall.parent_balls], function(rows){
-								//console.log(rows.length+" rows", objBall.parent_balls);
+								logger.debug(rows.length+" rows", objBall.parent_balls);
 								if (rows.length === objBall.parent_balls.length)
 									return checkSkiplistBallsExist();
 								var arrFoundBalls = rows.map(function(row) { return row.ball; });

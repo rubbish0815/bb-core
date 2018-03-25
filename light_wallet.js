@@ -9,6 +9,9 @@ var walletGeneral = require('./wallet_general.js');
 var light = require('./light.js');
 var eventBus = require('./event_bus.js');
 var breadcrumbs = require('./breadcrumbs.js');
+var logger = require('./logger.js');
+
+
 
 var RECONNECT_TO_LIGHT_VENDOR_PERIOD = 60*1000;
 
@@ -97,14 +100,14 @@ function refreshLightClientHistory(){
 	network.findOutboundPeerOrConnect(network.light_vendor_url, function onLocatedLightVendor(err, ws){
 		var finish = function(msg){
 			if (msg)
-				console.log(msg);
+				logger.debug(msg);
 			if (ws)
 				ws.bRefreshingHistory = false;
 			eventBus.emit('refresh_light_done');
 		};
 		if (err)
 			return finish("refreshLightClientHistory: "+err);
-		console.log('refreshLightClientHistory connected');
+		logger.debug('refreshLightClientHistory connected');
 		// handling the response may take some time, don't send new requests
 		if (ws.bRefreshingHistory)
 			return console.log("previous refresh not finished yet");

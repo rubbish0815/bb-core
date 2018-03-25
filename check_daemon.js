@@ -3,6 +3,7 @@
 var child_process = require('child_process');
 var conf = require('./conf.js');
 var mail = require('./mail.js');
+var logger = require('./logger.js');
 
 function checkDaemon(daemon_name, handleResult){
 	child_process.exec('ps x', function(err, stdout, stderr){
@@ -51,7 +52,7 @@ function notifyAdmin(message){
 }
 
 function write(str){
-	console.log(Date().toString()+': '+str);
+	logger.log(Date().toString()+': '+str);
 }
 
 exports.checkDaemon = checkDaemon;

@@ -4,7 +4,7 @@
 var fs = require('fs');
 var util = require('util');
 var conf = require('./conf.js');
-var desktopApp = require('./desktop_app.js' + '');
+var desktopApp = require('./desktop_app.js');
 
 var appDataDir = desktopApp.getAppDataDir();
 var log_filename = conf.LOG_FILENAME || (appDataDir + '/' + 'log.txt');

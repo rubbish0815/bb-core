@@ -37,7 +37,12 @@ function readJoint(conn, unit, callbacks) {
 	conn.query("SELECT json FROM joints WHERE unit=?", [unit], function(rows){
 		if (rows.length === 0)
 			return readJointDirectly(conn, unit, callbacks);
-		callbacks.ifFound(JSON.parse(rows[0].json));
+		var objJoint = JSON.parse(rows[0].json);
+		if (!objJoint.ball){ // got there because of an old bug
+			conn.query("DELETE FROM joints WHERE unit=?", [unit]);
+			return readJointDirectly(conn, unit, callbacks);
+		}
+		callbacks.ifFound(objJoint);
 	});
 }
 
@@ -74,7 +79,7 @@ function readJointDirectly(conn, unit, callbacks, bRetrying) {
 			var bVoided = (objUnit.content_hash && main_chain_index < min_retrievable_mci);
 			var bRetrievable = (main_chain_index >= min_retrievable_mci || main_chain_index === null);
 			
-			if (!conf.bLight && !objUnit.last_ball)
+			if (!conf.bLight && !objUnit.last_ball && !isGenesisUnit(unit))
 				throw Error("no last ball in unit "+JSON.stringify(objUnit));
 			
 			// unit hash verification below will fail if:

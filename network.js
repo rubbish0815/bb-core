@@ -24,9 +24,6 @@ var eventBus = require('./event_bus.js');
 var light = require('./light.js');
 var breadcrumbs = require('./breadcrumbs.js');
 var mail = process.browser ? null : require('./mail.js'+'');
-var logger = require('./logger.js');
-
-
 
 var FORWARDING_TIMEOUT = 10*1000; // don't forward if the joint was received more than FORWARDING_TIMEOUT ms ago
 var STALLED_TIMEOUT = 5000; // a request is treated as stalled if no response received within STALLED_TIMEOUT ms
@@ -52,7 +49,7 @@ var assocKnownPeers = {};
 var exchangeRates = {};
 
 if (process.browser){ // browser
-	logger.debug("defining .on() on ws");
+	console.log("defining .on() on ws");
 	WebSocket.prototype.on = function(event, callback) {
 		var self = this;
 		if (event === 'message'){
@@ -95,8 +92,8 @@ exports.light_vendor_url = null;
 function sendMessage(ws, type, content) {
 	var message = JSON.stringify([type, content]);
 	if (ws.readyState !== ws.OPEN)
-		return logger.debug("readyState="+ws.readyState+' on peer '+ws.peer+', will not send '+message);
-	logger.debug("SENDING "+message+" to "+ws.peer);
+		return console.log("readyState="+ws.readyState+' on peer '+ws.peer+', will not send '+message);
+	console.log("SENDING "+message+" to "+ws.peer);
 	ws.send(message);
 }
 
@@ -159,7 +156,7 @@ function sendRequest(ws, command, params, bReroutable, responseHandler){
 	//if (ws.assocPendingRequests[tag]) // ignore duplicate requests while still waiting for response from the same peer
 	//    return console.log("will not send identical "+command+" request");
 	if (ws.assocPendingRequests[tag]){
-		logger.debug("already sent a "+command+" request to "+ws.peer+", will add one more response handler rather than sending a duplicate request to the wire");
+		console.log('already sent a '+command+' request to '+ws.peer+', will add one more response handler rather than sending a duplicate request to the wire');
 		ws.assocPendingRequests[tag].responseHandlers.push(responseHandler);
 	}
 	else{
@@ -167,22 +164,22 @@ function sendRequest(ws, command, params, bReroutable, responseHandler){
 		// after STALLED_TIMEOUT, reroute the request to another peer
 		// it'll work correctly even if the current peer is already disconnected when the timeout fires
 		var reroute = !bReroutable ? null : function(){
-			logger.debug('will try to reroute a '+command+' request stalled at '+ws.peer);
+			console.log('will try to reroute a '+command+' request stalled at '+ws.peer);
 			if (!ws.assocPendingRequests[tag])
-				return logger.debug('will not reroute - the request was already handled by another peer');
+				return console.log('will not reroute - the request was already handled by another peer');
 			ws.assocPendingRequests[tag].bRerouted = true;
 			findNextPeer(ws, function(next_ws){ // the callback may be called much later if findNextPeer has to wait for connection
 				if (!ws.assocPendingRequests[tag])
-					return logger.debug('will not reroute after findNextPeer - the request was already handled by another peer');
+					return console.log('will not reroute after findNextPeer - the request was already handled by another peer');
 				if (next_ws === ws || assocReroutedConnectionsByTag[tag] && assocReroutedConnectionsByTag[tag].indexOf(next_ws) >= 0){
-					logger.debug('will not reroute '+command+' to the same peer, will rather wait for a new connection');
+					console.log('will not reroute '+command+' to the same peer, will rather wait for a new connection');
 					eventBus.once('connected_to_source', function(){ // try again
-						logger.debug('got new connection, retrying reroute '+command);
+						console.log('got new connection, retrying reroute '+command);
 						reroute();
 					});
 					return;
 				}
-				logger.debug('rerouting '+command+' from '+ws.peer+' to '+next_ws.peer);
+				console.log('rerouting '+command+' from '+ws.peer+' to '+next_ws.peer);
 				ws.assocPendingRequests[tag].responseHandlers.forEach(function(rh){
 					sendRequest(next_ws, command, params, bReroutable, rh);
 				});
@@ -213,7 +210,7 @@ function handleResponse(ws, tag, response){
 	var pendingRequest = ws.assocPendingRequests[tag];
 	if (!pendingRequest) // was canceled due to timeout or rerouted and answered by another peer
 		//throw "no req by tag "+tag;
-		return logger.debug("no req by tag "+tag);
+		return console.log("no req by tag "+tag);
 	pendingRequest.responseHandlers.forEach(function(responseHandler){
 		process.nextTick(function(){
 			responseHandler(ws, pendingRequest.request, response);
@@ -238,7 +235,7 @@ function handleResponse(ws, tag, response){
 }
 
 function cancelRequestsOnClosedConnection(ws){
-	logger.debug("websocket closed, will complete all outstanding requests");
+	console.log("websocket closed, will complete all outstanding requests");
 	for (var tag in ws.assocPendingRequests){
 		var pendingRequest = ws.assocPendingRequests[tag];
 		clearTimeout(pendingRequest.reroute_timer);
@@ -267,9 +264,9 @@ function findNextPeer(ws, handleNextPeer){
 		if (next_ws)
 			return handleNextPeer(next_ws);
 		var peer = ws ? ws.peer : '[none]';
-		logger.debug('findNextPeer after '+peer+' found no appropriate peer, will wait for a new connection');
+		console.log('findNextPeer after '+peer+' found no appropriate peer, will wait for a new connection');
 		eventBus.once('connected_to_source', function(new_ws){
-			logger.debug('got new connection, retrying findNextPeer after '+peer);
+			console.log('got new connection, retrying findNextPeer after '+peer);
 			findNextPeer(ws, handleNextPeer);
 		});
 	});
@@ -305,11 +302,11 @@ function findRandomInboundPeer(handleInboundPeer){
 		ORDER BY (count_new_good_joints=0), "+db.getRandom()+" LIMIT 1", 
 		[arrInboundHosts, conf.MAX_TOLERATED_INVALID_RATIO], 
 		function(rows){
-			logger.debug(rows.length+" inbound peers");
+			console.log(rows.length+" inbound peers");
 			if (rows.length === 0)
 				return handleInboundPeer(null);
 			var host = rows[0].peer_host;
-			logger.debug("selected inbound peer "+host);
+			console.log("selected inbound peer "+host);
 			var ws = arrInboundSources.filter(function(ws){ return (ws.host === host); })[0];
 			if (!ws)
 				throw Error("inbound ws not found");
@@ -351,13 +348,13 @@ function connectToPeer(url, onOpen) {
 				type: 5
 			}
 		}, /^wss/i.test(url));
-		logger.debug('Using proxy: ' + conf.socksHost + ':' + conf.socksPort);
+		console.log('Using proxy: ' + conf.socksHost + ':' + conf.socksPort);
 	}
 	var ws = options.agent ? new WebSocket(url,options) : new WebSocket(url);
 	assocConnectingOutboundWebsockets[url] = ws;
 	setTimeout(function(){
 		if (assocConnectingOutboundWebsockets[url]){
-			logger.debug('abandoning connection to '+url+' due to timeout');
+			console.log('abandoning connection to '+url+' due to timeout');
 			delete assocConnectingOutboundWebsockets[url];
 			// after this, new connection attempts will be allowed to the wire, but this one can still succeed.  See the check for duplicates below.
 		}
@@ -374,7 +371,7 @@ function connectToPeer(url, onOpen) {
 			throw Error("url is different: "+ws.url);
 		var another_ws_to_same_peer = getOutboundPeerWsByUrl(url);
 		if (another_ws_to_same_peer){ // duplicate connection.  May happen if we abondoned a connection attempt after timeout but it still succeeded while we opened another connection
-			logger.debug('already have a connection to '+url+', will keep the old one and close the duplicate');
+			console.log('already have a connection to '+url+', will keep the old one and close the duplicate');
 			ws.close(1000, 'duplicate connection');
 			if (onOpen)
 				onOpen(null, another_ws_to_same_peer);
@@ -384,7 +381,7 @@ function connectToPeer(url, onOpen) {
 		ws.host = getHostByPeer(ws.peer);
 		ws.bOutbound = true;
 		ws.last_ts = Date.now();
-		logger.debug('connected to '+url+", host "+ws.host);
+		console.log('connected to '+url+", host "+ws.host);
 		arrOutboundPeers.push(ws);
 		sendVersion(ws);
 		if (conf.myUrl) // I can listen too, this is my url to connect to
@@ -398,7 +395,7 @@ function connectToPeer(url, onOpen) {
 	});
 	ws.on('close', function onWsClose() {
 		var i = arrOutboundPeers.indexOf(ws);
-		logger.debug('close event, removing '+i+': '+url);
+		console.log('close event, removing '+i+': '+url);
 		if (i !== -1)
 			arrOutboundPeers.splice(i, 1);
 		cancelRequestsOnClosedConnection(ws);
@@ -407,7 +404,7 @@ function connectToPeer(url, onOpen) {
 	});
 	ws.on('error', function onWsError(e){
 		delete assocConnectingOutboundWebsockets[url];
-		logger.debug("error from server "+url+": "+e);
+		console.log("error from server "+url+": "+e);
 		var err = e.toString();
 		// !ws.bOutbound means not connected yet. This is to distinguish connection errors from later errors that occur on open connection
 		if (!ws.bOutbound && onOpen)
@@ -416,7 +413,7 @@ function connectToPeer(url, onOpen) {
 			eventBus.emit('open-'+url, err);
 	});
 	ws.on('message', onWebsocketMessage);
-	logger.debug('connectToPeer done');
+	console.log('connectToPeer done');
 }
 
 function addOutboundPeers(multiplier){
@@ -474,13 +471,13 @@ function addPeer(peer){
 	assocKnownPeers[peer] = true;
 	var host = getHostByPeer(peer);
 	addPeerHost(host, function(){
-		logger.debug("will insert peer "+peer);
+		console.log("will insert peer "+peer);
 		db.query("INSERT "+db.getIgnore()+" INTO peers (peer_host, peer) VALUES (?,?)", [host, peer]);
 	});
 }
 
 function getOutboundPeerWsByUrl(url){
-	logger.debug("outbound peers: "+arrOutboundPeers.map(function(o){ return o.peer; }).join(", "));
+	console.log("outbound peers: "+arrOutboundPeers.map(function(o){ return o.peer; }).join(", "));
 	for (var i=0; i<arrOutboundPeers.length; i++)
 		if (arrOutboundPeers[i].peer === url)
 			return arrOutboundPeers[i];
@@ -511,7 +508,7 @@ function findOutboundPeerOrConnect(url, onOpen){
 	if (ws){ // add second event handler
 		breadcrumbs.add('already connecting to '+url);
 		return eventBus.once('open-'+url, function secondOnOpen(err){
-			logger.debug('second open '+url+", err="+err);
+			console.log('second open '+url+", err="+err);
 			if (err)
 				return onOpen(err);
 			if (ws.readyState === ws.OPEN)
@@ -519,12 +516,12 @@ function findOutboundPeerOrConnect(url, onOpen){
 			else{
 				// can happen e.g. if the ws was abandoned but later succeeded, we opened another connection in the meantime, 
 				// and had another_ws_to_same_peer on the first connection
-				logger.debug('in second onOpen, websocket already closed');
+				console.log('in second onOpen, websocket already closed');
 				onOpen('[internal] websocket already closed');
 			}
 		});
 	}
-	logger.debug("will connect to "+url);
+	console.log("will connect to "+url);
 	connectToPeer(url, onOpen);
 }
 
@@ -532,16 +529,16 @@ function purgePeerEvents(){
     if (conf.storage !== 'sqlite') {
         return;
     }
-    logger.debug('will purge peer events');
+    console.log('will purge peer events');
     db.query("DELETE FROM peer_events WHERE event_date <= datetime('now', '-3 day')", function() {
-    	logger.debug("deleted some old peer_events");
+        console.log("deleted some old peer_events");
     });
 }
 
 function purgeDeadPeers(){
 	if (conf.storage !== 'sqlite')
 		return;
-	logger.debug('will purge dead peers');
+	console.log('will purge dead peers');
 	var arrOutboundPeerUrls = arrOutboundPeers.map(function(ws){ return ws.peer; });
 	db.query("SELECT rowid, "+db.getUnixTimestamp('event_date')+" AS ts FROM peer_events ORDER BY rowid DESC LIMIT 1", function(lrows){
 		if (lrows.length === 0)
@@ -562,7 +559,7 @@ function purgeDeadPeers(){
 						var days_since_last_event = (last_event_ts - max_event_ts)/24/3600;
 						if (count_other_events < 20000 || days_since_last_event < 7)
 							return cb();
-						logger.debug('peer '+row.peer+' is dead, will delete');
+						console.log('peer '+row.peer+' is dead, will delete');
 						db.query("DELETE FROM peers WHERE peer=?", [row.peer], function(){
 							delete assocKnownPeers[row.peer];
 							cb();
@@ -580,7 +577,7 @@ function requestPeers(ws){
 
 function handleNewPeers(ws, request, arrPeerUrls){
 	if (arrPeerUrls.error)
-		return logger.debug('get_peers failed: '+arrPeerUrls.error);
+		return console.log('get_peers failed: '+arrPeerUrls.error);
 	if (!Array.isArray(arrPeerUrls))
 		return sendError(ws, "peer urls is not an array");
 	var arrQueries = [];
@@ -590,7 +587,7 @@ function handleNewPeers(ws, request, arrPeerUrls){
 			continue;
 		var regexp = (conf.WS_PROTOCOL === 'wss://') ? /^wss:\/\// : /^wss?:\/\//;
 		if (!url.match(regexp)){
-			logger.debug('ignoring new peer '+url+' because of incompatible ws protocol');
+			console.log('ignoring new peer '+url+' because of incompatible ws protocol');
 			continue;
 		}
 		var host = getHostByPeer(url);
@@ -605,7 +602,7 @@ function heartbeat(){
 	var bJustResumed = (typeof window !== 'undefined' && window && window.cordova && Date.now() - last_hearbeat_wake_ts > 2*HEARTBEAT_TIMEOUT);
 	last_hearbeat_wake_ts = Date.now();
 	wss.clients.concat(arrOutboundPeers).forEach(function(ws){
-		if (ws.bSleeping)
+		if (ws.bSleeping || ws.readyState !== ws.OPEN)
 			return;
 		var elapsed_since_last_received = Date.now() - ws.last_ts;
 		if (elapsed_since_last_received < HEARTBEAT_TIMEOUT)
@@ -617,7 +614,7 @@ function heartbeat(){
 		var elapsed_since_last_sent_heartbeat = Date.now() - ws.last_sent_heartbeat_ts;
 		if (elapsed_since_last_sent_heartbeat < HEARTBEAT_RESPONSE_TIMEOUT)
 			return;
-		logger.debug('will disconnect peer '+ws.peer+' who was silent for '+elapsed_since_last_received+'ms');
+		console.log('will disconnect peer '+ws.peer+' who was silent for '+elapsed_since_last_received+'ms');
 		ws.close(1000, "lost connection");
 	});
 }
@@ -631,7 +628,7 @@ function handleHeartbeatResponse(ws, request, response){
 
 function requestFromLightVendor(command, params, responseHandler){
 	if (!exports.light_vendor_url){
-		logger.debug("light_vendor_url not set yet");
+		console.log("light_vendor_url not set yet");
 		return setTimeout(function(){
 			requestFromLightVendor(command, params, responseHandler);
 		}, 1000);
@@ -644,7 +641,7 @@ function requestFromLightVendor(command, params, responseHandler){
 }
 
 function printConnectionStatus(){
-	logger.debug(wss.clients.length+" incoming connections, "+arrOutboundPeers.length+" outgoing connections, "+
+	console.log(wss.clients.length+" incoming connections, "+arrOutboundPeers.length+" outgoing connections, "+
 		Object.keys(assocConnectingOutboundWebsockets).length+" outgoing connections being opened");
 }
 
@@ -665,13 +662,13 @@ function subscribe(ws){
 
 // sent as justsaying or as response to a request
 function sendJoint(ws, objJoint, tag) {
-	logger.debug('sending joint identified by unit ' + objJoint.unit.unit + ' to', ws.peer);
+	console.log('sending joint identified by unit ' + objJoint.unit.unit + ' to', ws.peer);
 	tag ? sendResponse(ws, tag, {joint: objJoint}) : sendJustsaying(ws, 'joint', objJoint);
 }
 
 // sent by light clients to their vendors
 function postJointToLightVendor(objJoint, handleResponse) {
-	logger.debug('posing joint identified by unit ' + objJoint.unit.unit + ' to light vendor');
+	console.log('posing joint identified by unit ' + objJoint.unit.unit + ' to light vendor');
 	requestFromLightVendor('post_joint', objJoint, function(ws, request, response){
 		handleResponse(response);
 	});
@@ -709,14 +706,15 @@ function requestNewJoints(ws){
 }
 
 function rerequestLostJoints(){
+	//console.log("rerequestLostJoints");
 	if (bCatchingUp)
 		return;
 	joint_storage.findLostJoints(function(arrUnits){
-		logger.debug("lost units", arrUnits);
+		console.log("lost units", arrUnits);
 		tryFindNextPeer(null, function(ws){
 			if (!ws)
 				return;
-			logger.debug("found next peer "+ws.peer);
+			console.log("found next peer "+ws.peer);
 			requestJoints(ws, arrUnits.filter(function(unit){ return (!assocUnitsInWork[unit] && !havePendingJointRequest(unit)); }));
 		});
 	});
@@ -730,7 +728,7 @@ function requestNewMissingJoints(ws, arrUnits){
 			if (assocUnitsInWork[unit])
 				return cb();
 			if (havePendingJointRequest(unit)){
-				logger.debug("unit "+unit+" was already requested");
+				console.log("unit "+unit+" was already requested");
 				return cb();
 			}
 			joint_storage.checkIfNewUnit(unit, {
@@ -738,8 +736,8 @@ function requestNewMissingJoints(ws, arrUnits){
 					arrNewUnits.push(unit);
 					cb();
 				},
-				ifKnown: function(){logger.debug("known"); cb();}, // it has just been handled
-				ifKnownUnverified: function(){logger.debug("known unverified"); cb();}, // I was already waiting for it
+				ifKnown: function(){console.log("known"); cb();}, // it has just been handled
+				ifKnownUnverified: function(){console.log("known unverified"); cb();}, // I was already waiting for it
 				ifKnownBad: function(error){
 					throw Error("known bad "+unit+": "+error);
 				}
@@ -764,7 +762,7 @@ function requestJoints(ws, arrUnits) {
 			// since response handlers are called in nextTick(), there is a period when the pending request is already cleared but the response
 			// handler is not yet called, hence assocRequestedUnits[unit] not yet cleared
 			if (diff <= STALLED_TIMEOUT)
-				return logger.debug("unit "+unit+" already requested "+diff+" ms ago, assocUnitsInWork="+assocUnitsInWork[unit]);
+				return console.log("unit "+unit+" already requested "+diff+" ms ago, assocUnitsInWork="+assocUnitsInWork[unit]);
 			//	throw new Error("unit "+unit+" already requested "+diff+" ms ago, assocUnitsInWork="+assocUnitsInWork[unit]);
 		}
 		if (ws.readyState === ws.OPEN)
@@ -782,11 +780,11 @@ function handleResponseToJointRequest(ws, request, response){
 			if (conf.bLight) // we trust the light vendor that if it doesn't know about the unit after 1 day, it doesn't exist
 				db.query("DELETE FROM unhandled_private_payments WHERE unit=? AND creation_date<"+db.addTime('-1 DAY'), [unit]);
 			if (!bCatchingUp)
-				return logger.debug("unit "+unit+" does not exist"); // if it is in unhandled_joints, it'll be deleted in 1 hour
+				return console.log("unit "+unit+" does not exist"); // if it is in unhandled_joints, it'll be deleted in 1 hour
 			//	return purgeDependenciesAndNotifyPeers(unit, "unit "+unit+" does not exist");
 			db.query("SELECT 1 FROM hash_tree_balls WHERE unit=?", [unit], function(rows){
 				if (rows.length === 0)
-					return logger.debug("unit "+unit+" does not exist (catching up)");
+					return console.log("unit "+unit+" does not exist (catching up)");
 				//	return purgeDependenciesAndNotifyPeers(unit, "unit "+unit+" does not exist (catching up)");
 				findNextPeer(ws, function(next_ws){
 					breadcrumbs.add("found next peer to reroute joint_not_found "+unit+": "+next_ws.peer);
@@ -897,7 +895,7 @@ function handleJoint(ws, objJoint, bSaved, callbacks){
 	var validate = function(){
 		validation.validate(objJoint, {
 			ifUnitError: function(error){
-				logger.debug(objJoint.unit.unit+" validation failed: "+error);
+				console.log(objJoint.unit.unit+" validation failed: "+error);
 				callbacks.ifUnitError(error);
 			//	throw Error(error);
 				purgeJointAndDependenciesAndNotifyPeers(objJoint, error, function(){
@@ -925,11 +923,11 @@ function handleJoint(ws, objJoint, bSaved, callbacks){
 			},
 			ifTransientError: function(error){
 				throw Error(error);
-				logger.debug("############################## transient error "+error);
+				console.log("############################## transient error "+error);
 				delete assocUnitsInWork[unit];
 			},
 			ifNeedHashTree: function(){
-				logger.debug('need hash tree for unit '+unit);
+				console.log('need hash tree for unit '+unit);
 				if (objJoint.unsigned)
 					throw Error("ifNeedHashTree() unsigned");
 				callbacks.ifNeedHashTree();
@@ -1162,7 +1160,7 @@ function handleSavedJoint(objJoint, creation_ts, peer){
 		ifNew: function(){
 			// that's ok: may be simultaneously selected by readDependentJointsThatAreReady and deleted by purgeJunkUnhandledJoints when we wake up after sleep
 			delete assocUnitsInWork[unit];
-			logger.debug("new in handleSavedJoint: "+unit);
+			console.log("new in handleSavedJoint: "+unit);
 		//	throw Error("new in handleSavedJoint: "+unit);
 		}
 	});
@@ -1246,7 +1244,7 @@ function notifyWatchersAboutStableJoints(mci){
 	mutex.lock(["write"], function(unlock){
 		unlock(); // we don't need to block writes, we requested the lock just to wait that the current write completes
 		notifyLocalWatchedAddressesAboutStableJoints(mci);
-		logger.debug("notifyWatchersAboutStableJoints "+mci);
+		console.log("notifyWatchersAboutStableJoints "+mci);
 		if (mci <= 1)
 			return;
 		storage.findLastBallMciOfMci(db, mci, function(last_ball_mci){
@@ -1358,6 +1356,8 @@ function flushEvents(forceFlushing) {
 }
 
 function writeEvent(event, host){
+	if (conf.bLight)
+		return;
 	if (event === 'invalid' || event === 'nonserial'){
 		var column = "count_"+event+"_joints";
 		db.query("UPDATE peer_hosts SET "+column+"="+column+"+1 WHERE peer_host=?", [host]);
@@ -1369,7 +1369,8 @@ function writeEvent(event, host){
 	flushEvents();
 }
 
-setInterval(function(){flushEvents(true)}, 1000 * 60);
+if (!conf.bLight)
+	setInterval(function(){flushEvents(true)}, 1000 * 60);
 
 
 function findAndHandleJointsThatAreReady(unit){
@@ -1427,10 +1428,10 @@ function checkCatchupLeftovers(){
 		LIMIT 1",
 		function(rows){
 			if (rows.length === 0)
-				return logger.debug('no leftovers');
-			logger.debug('have catchup leftovers from the previous run');
+				return console.log('no leftovers');
+			console.log('have catchup leftovers from the previous run');
 			findNextPeer(null, function(ws){
-				logger.debug('will request leftovers from '+ws.peer);
+				console.log('will request leftovers from '+ws.peer);
 				if (!bCatchingUp && !bWaitingForCatchupChain)
 					requestCatchup(ws);
 			});
@@ -1439,15 +1440,17 @@ function checkCatchupLeftovers(){
 }
 
 function requestCatchup(ws){
-	logger.debug("will request catchup from "+ws.peer);
+	console.log("will request catchup from "+ws.peer);
 	eventBus.emit('catching_up_started');
+	if (conf.storage === 'sqlite')
+		db.query("PRAGMA cache_size=-200000", function(){});
 	catchup.purgeHandledBallsFromHashTree(db, function(){
 		db.query(
 			"SELECT hash_tree_balls.unit FROM hash_tree_balls LEFT JOIN units USING(unit) WHERE units.unit IS NULL ORDER BY ball_index", 
 			function(tree_rows){ // leftovers from previous run
 				if (tree_rows.length > 0){
 					bCatchingUp = true;
-					logger.debug("will request balls found in hash tree");
+					console.log("will request balls found in hash tree");
 					requestNewMissingJoints(ws, tree_rows.map(function(tree_row){ return tree_row.unit; }));
 					waitTillHashTreeFullyProcessedAndRequestNext(ws);
 					return;
@@ -1465,6 +1468,7 @@ function requestCatchup(ws){
 					// (will also reset the flag only after the response is fully processed)
 					bWaitingForCatchupChain = true;
 					
+					console.log('will read last stable mci for catchup');
 					storage.readLastStableMcIndex(db, function(last_stable_mci){
 						storage.readLastMainChainIndex(function(last_known_mci){
 							myWitnesses.readMyWitnesses(function(arrWitnesses){
@@ -1482,7 +1486,7 @@ function requestCatchup(ws){
 function handleCatchupChain(ws, request, response){
 	if (response.error){
 		bWaitingForCatchupChain = false;
-		logger.debug('catchup request got error response: '+response.error);
+		console.log('catchup request got error response: '+response.error);
 		// findLostJoints will wake up and trigger another attempt to request catchup
 		return;
 	}
@@ -1508,11 +1512,7 @@ function handleCatchupChain(ws, request, response){
 // hash tree
 
 function requestNextHashTree(ws){
-	db.query("SELECT COUNT(1) AS count_left FROM catchup_chain_balls", function(rows){
-		if (rows.length > 0) {
-			eventBus.emit('catchup_balls_left', rows[0].count_left);
-		}
-	});
+	eventBus.emit('catchup_next_hash_tree');
 	db.query("SELECT ball FROM catchup_chain_balls ORDER BY member_index LIMIT 2", function(rows){
 		if (rows.length === 0)
 			return comeOnline();
@@ -1528,7 +1528,7 @@ function requestNextHashTree(ws){
 		// don't send duplicate requests
 		for (var tag in ws.assocPendingRequests)
 			if (ws.assocPendingRequests[tag].request.command === 'get_hash_tree'){
-				logger.debug("already requested hash tree from this peer");
+				console.log("already requested hash tree from this peer");
 				return;
 			}
 		sendRequest(ws, 'get_hash_tree', {from_ball: from_ball, to_ball: to_ball}, true, handleHashTree);
@@ -1537,7 +1537,7 @@ function requestNextHashTree(ws){
 
 function handleHashTree(ws, request, response){
 	if (response.error){
-		logger.debug('get_hash_tree got error response: '+response.error);
+		console.log('get_hash_tree got error response: '+response.error);
 		waitTillHashTreeFullyProcessedAndRequestNext(ws); // after 1 sec, it'll request the same hash tree, likely from another peer
 		return;
 	}
@@ -1685,11 +1685,11 @@ function handleSavedPrivatePayments(unit){
 									eventBus.emit("new_direct_private_chains", [arrPrivateElements]);
 								assocNewUnits[row.unit] = true;
 								deleteHandledPrivateChain(row.unit, row.message_index, row.output_index, cb);
-								logger.debug('emit '+key);
+								console.log('emit '+key);
 								eventBus.emit(key, true);
 							},
 							ifError: function(error){
-								logger.debug("validation of priv: "+error);
+								console.log("validation of priv: "+error);
 							//	throw Error(error);
 								if (ws)
 									sendResult(ws, {private_payment_in_unit: row.unit, result: 'error', error: error});
@@ -1785,7 +1785,7 @@ function requestHistoryFor(arrUnits, arrAddresses, onDone){
 			objHistoryRequest.addresses = arrAddresses;
 		requestFromLightVendor('light/get_history', objHistoryRequest, function(ws, request, response){
 			if (response.error){
-				logger.debug(response.error);
+				console.log(response.error);
 				return onDone(response.error);
 			}
 			light.processHistory(response, {
@@ -1849,12 +1849,12 @@ function checkThatEachChainElementIncludesThePrevious(arrPrivateElements, handle
 			return handleResult(null); // undefined result
 		light.processLinkProofs(arrUnits, arrChain, {
 			ifError: function(err){
-				logger.debug("linkproof validation failed: "+err);
+				console.log("linkproof validation failed: "+err);
 				throw Error(err);
 				handleResult(false);
 			},
 			ifOk: function(){
-				logger.debug("linkproof validated ok");
+				console.log("linkproof validated ok");
 				handleResult(true);
 			}
 		});
@@ -1888,7 +1888,7 @@ function initWitnessesIfNecessary(ws, onDone){
 			return onDone();
 		sendRequest(ws, 'get_witnesses', null, false, function(ws, request, arrWitnesses){
 			if (arrWitnesses.error){
-				logger.debug('get_witnesses returned error: '+arrWitnesses.error);
+				console.log('get_witnesses returned error: '+arrWitnesses.error);
 				return onDone();
 			}
 			myWitnesses.insertWitnesses(arrWitnesses, onDone);
@@ -1942,7 +1942,7 @@ function handleJustsaying(ws, subject, body){
 				return;
 			}
 			ws.library_version = body.library_version;
-			if (typeof ws.library_version === 'string' && version2int(ws.library_version) < version2int('0.2.70') && constants.version === '1.0')
+			if (typeof ws.library_version === 'string' && version2int(ws.library_version) < version2int(constants.minCoreVersion))
 				ws.old_core = true;
 			eventBus.emit('peer_version', ws, body); // handled elsewhere
 			break;
@@ -1964,8 +1964,8 @@ function handleJustsaying(ws, subject, body){
 		case 'bugreport':
 			if (!body)
 				return;
-			if (conf.ignoreBugreportRegexp && new RegExp(conf.ignoreBugreportRegexp).test(body.exception.toString()))
-				return logger.debug('ignoring bugreport');
+			if (conf.ignoreBugreportRegexp && new RegExp(conf.ignoreBugreportRegexp).test(body.message+' '+body.exception.toString()))
+				return console.log('ignoring bugreport');
 			mail.sendBugEmail(body.message, body.exception);
 			break;
 			
@@ -2116,6 +2116,7 @@ function handleJustsaying(ws, subject, body){
 				sendJustsaying(ws, 'hub/push_project_number', {projectNumber: conf.pushApiProjectNumber});
 			else
 				sendJustsaying(ws, 'hub/push_project_number', {projectNumber: 0});
+			eventBus.emit('client_logged_in', ws);
 			break;
 			
 		// I'm a hub, the peer wants to download new messages
@@ -2198,15 +2199,25 @@ function handleJustsaying(ws, subject, body){
 				);
 			});            
 			break;
+			
 		case 'exchange_rates':
+			if (!ws.bLoggingIn && !ws.bLoggedIn) // accept from hub only
+				return;
 			_.assign(exchangeRates, body);
+			eventBus.emit('rates_updated');
+			break;
+			
+		case 'upgrade_required':
+			if (!ws.bLoggingIn && !ws.bLoggedIn) // accept from hub only
+				return;
+			throw Error("Mandatory upgrade required, please check the release notes at https://github.com/byteball/byteball/releases and upgrade.");
 			break;
 	}
 }
 
 function handleRequest(ws, tag, command, params){
 	if (ws.assocInPreparingResponse[tag]) // ignore repeated request while still preparing response to a previous identical request
-		return logger.debug("ignoring identical "+command+" request");
+		return console.log("ignoring identical "+command+" request");
 	ws.assocInPreparingResponse[tag] = true;
 	switch (command){
 		case 'heartbeat':
@@ -2239,6 +2250,7 @@ function handleRequest(ws, tag, command, params){
 				return sendErrorResponse(ws, tag, "I'm light, cannot subscribe you to updates");
 			}
 			if (ws.old_core){
+				sendJustsaying(ws, 'upgrade_required');
 				sendErrorResponse(ws, tag, "old core");
 				return ws.close(1000, "old core");
 			}
@@ -2512,6 +2524,27 @@ function handleRequest(ws, tag, command, params){
 			});
 			break;
 
+	   case 'light/get_attestation':
+			if (conf.bLight)
+				return sendErrorResponse(ws, tag, "I'm light myself, can't serve you");
+			if (ws.bOutbound)
+				return sendErrorResponse(ws, tag, "light clients have to be inbound");
+			if (!params)
+				return sendErrorResponse(ws, tag, "no params in light/get_attestation");
+			if (!params.attestor_address || !params.field || !params.value)
+				return sendErrorResponse(ws, tag, "missing params in light/get_attestation");
+			var order = (conf.storage === 'sqlite') ? 'rowid' : 'creation_date';
+			var join = (conf.storage === 'sqlite') ? '' : 'JOIN units USING(unit)';
+			db.query(
+				"SELECT unit FROM attested_fields "+join+" WHERE attestor_address=? AND field=? AND value=? ORDER BY "+order+" DESC LIMIT 1", 
+				[params.attestor_address, params.field, params.value],
+				function(rows){
+					var attestation_unit = (rows.length > 0) ? rows[0].unit : "";
+					sendResponse(ws, tag, attestation_unit);
+				}
+			);
+			break;
+
 		// I'm a hub, the peer wants to enable push notifications
 		case 'hub/enable_notification':
 			if(ws.device_address)
@@ -2552,14 +2585,14 @@ function onWebsocketMessage(message) {
 	if (ws.readyState !== ws.OPEN)
 		return;
 	
-	logger.debug('RECEIVED '+(message.length > 1000 ? message.substr(0,1000)+'... ('+message.length+' chars)' : message)+' from '+ws.peer);
+	console.log('RECEIVED '+(message.length > 1000 ? message.substr(0,1000)+'... ('+message.length+' chars)' : message)+' from '+ws.peer);
 	ws.last_ts = Date.now();
 	
 	try{
 		var arrMessage = JSON.parse(message);
 	}
 	catch(e){
-		return logger.debug('failed to json.parse message '+message);
+		return console.log('failed to json.parse message '+message);
 	}
 	var message_type = arrMessage[0];
 	var content = arrMessage[1];
@@ -2575,7 +2608,7 @@ function onWebsocketMessage(message) {
 			return handleResponse(ws, content.tag, content.response);
 			
 		default: 
-			logger.debug("unknown type: "+message_type);
+			console.log("unknown type: "+message_type);
 		//	throw Error("unknown type: "+message_type);
 	}
 }
@@ -2589,7 +2622,7 @@ function startAcceptingConnections(){
 	wss.on('connection', function(ws) {
 		var ip = ws.upgradeReq.connection.remoteAddress;
 		if (!ip){
-			logger.debug("no ip in accepted connection");
+			console.log("no ip in accepted connection");
 			ws.terminate();
 			return;
 		}
@@ -2601,9 +2634,9 @@ function startAcceptingConnections(){
 		ws.assocInPreparingResponse = {};
 		ws.bInbound = true;
 		ws.last_ts = Date.now();
-		logger.debug('got connection from '+ws.peer+", host "+ws.host);
+		console.log('got connection from '+ws.peer+", host "+ws.host);
 		if (wss.clients.length >= conf.MAX_INBOUND_CONNECTIONS){
-			logger.debug("inbound connections maxed out, rejecting new client "+ip);
+			console.log("inbound connections maxed out, rejecting new client "+ip);
 			ws.close(1000, "inbound connections maxed out"); // 1001 doesn't work in cordova
 			return;
 		}
@@ -2617,7 +2650,7 @@ function startAcceptingConnections(){
 				bStatsCheckUnderWay = false;
 				var stats = rows[0];
 				if (stats.count_invalid){
-					logger.debug("rejecting new client "+ws.host+" because of bad stats");
+					console.log("rejecting new client "+ws.host+" because of bad stats");
 					return ws.terminate();
 				}
 			
@@ -2650,16 +2683,16 @@ function startAcceptingConnections(){
 			db.query("DELETE FROM watched_light_addresses WHERE peer=?", [ws.peer]);
 			db.query("DELETE FROM watched_light_units WHERE peer=?", [ws.peer]);
 			//db.query("DELETE FROM light_peer_witnesses WHERE peer=?", [ws.peer]);
-			logger.debug("client "+ws.peer+" disconnected");
+			console.log("client "+ws.peer+" disconnected");
 			cancelRequestsOnClosedConnection(ws);
 		});
 		ws.on('error', function(e){
-			logger.debug("error on client "+ws.peer+": "+e);
+			console.log("error on client "+ws.peer+": "+e);
 			ws.close(1000, "received error");
 		});
 		addPeerHost(ws.host);
 	});
-	logger.debug('WSS running at port ' + conf.port);
+	console.log('WSS running at port ' + conf.port);
 }
 
 function startRelay(){
@@ -2699,7 +2732,7 @@ function startLightClient(){
 }
 
 function start(){
-	logger.debug("starting network");
+	console.log("starting network");
 	conf.bLight ? startLightClient() : startRelay();
 	setInterval(printConnectionStatus, 6*1000);
 	// if we have exactly same intervals on two clints, they might send heartbeats to each other at the same time

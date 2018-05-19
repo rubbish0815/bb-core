@@ -1,5 +1,6 @@
 /*jslint node: true */
 "use strict";
+var _ = require('lodash');
 var async = require('async');
 var storage = require('./storage.js');
 var graph = require('./graph.js');
@@ -18,9 +19,6 @@ var Definition = require("./definition.js");
 var conf = require('./conf.js');
 var profiler = require('./profiler.js');
 var breadcrumbs = require('./breadcrumbs.js');
-var logger = require('./logger.js');
-
-
 
 var MAX_INT32 = Math.pow(2, 31) - 1;
 
@@ -52,7 +50,7 @@ function validate(objJoint, callbacks) {
 	if (!objUnit.unit)
 		throw Error("no unit");
 	
-	logger.debug("validating joint identified by unit "+objJoint.unit.unit);
+	console.log("\nvalidating joint identified by unit "+objJoint.unit.unit);
 	
 	if (!isStringOfLength(objUnit.unit, constants.HASH_LENGTH))
 		return callbacks.ifJointError("wrong unit length");
@@ -807,7 +805,7 @@ function validateAuthor(conn, objAuthor, objUnit, objValidationState, callback){
 					function(row, cb){
 						graph.determineIfIncludedOrEqual(conn, row.unit, objUnit.parent_units, function(bIncluded){
 							if (bIncluded)
-								logger.debug("checkNoPendingChangeOfDefinitionChash: unit "+row.unit+" is included");
+								console.log("checkNoPendingChangeOfDefinitionChash: unit "+row.unit+" is included");
 							bIncluded ? cb("found") : cb();
 						});
 					},
@@ -847,7 +845,7 @@ function validateAuthor(conn, objAuthor, objUnit, objValidationState, callback){
 					function(row, cb){
 						graph.determineIfIncludedOrEqual(conn, row.unit, objUnit.parent_units, function(bIncluded){
 							if (bIncluded)
-								logger.debug("checkNoPendingDefinition: unit "+row.unit+" is included");
+								console.log("checkNoPendingDefinition: unit "+row.unit+" is included");
 							bIncluded ? cb("found") : cb();
 						});
 					},
@@ -886,7 +884,7 @@ function validateAuthor(conn, objAuthor, objUnit, objValidationState, callback){
 							function(row, cb){
 								graph.determineIfIncludedOrEqual(conn, row.unit, objUnit.parent_units, function(bIncluded){
 									if (bIncluded)
-										logger.debug("checkNoPendingOrRetrievableNonserialIncluded: unit "+row.unit+" is included");
+										console.log("checkNoPendingOrRetrievableNonserialIncluded: unit "+row.unit+" is included");
 									bIncluded ? cb("found") : cb();
 								});
 							},
@@ -934,7 +932,7 @@ function validateAuthor(conn, objAuthor, objUnit, objValidationState, callback){
 }
 
 function validateMessages(conn, arrMessages, objUnit, objValidationState, callback){
-	logger.debug("validateMessages "+objUnit.unit);
+	console.log("validateMessages "+objUnit.unit);
 	async.forEachOfSeries(
 		arrMessages, 
 		function(objMessage, message_index, cb){
@@ -1480,7 +1478,7 @@ function validatePaymentInputsAndOutputs(conn, payload, objAsset, message_index,
 					doubleSpendQuery, doubleSpendVars, 
 					objUnit, objValidationState, 
 					function acceptDoublespends(cb3){
-						logger.debug("--- accepting doublespend on unit "+objUnit.unit);
+						console.log("--- accepting doublespend on unit "+objUnit.unit);
 						var sql = "UPDATE inputs SET is_unique=NULL WHERE "+doubleSpendWhere+
 							" AND (SELECT is_stable FROM units WHERE units.unit=inputs.unit)=0";
 						if (!(objAsset && objAsset.is_private)){
@@ -1489,12 +1487,12 @@ function validatePaymentInputsAndOutputs(conn, payload, objAsset, message_index,
 							return cb3();
 						}
 						mutex.lock(["private_write"], function(unlock){
-							logger.debug("--- will ununique the conflicts of unit "+objUnit.unit);
+							console.log("--- will ununique the conflicts of unit "+objUnit.unit);
 							conn.query(
 								sql, 
 								doubleSpendVars, 
 								function(){
-									logger.debug("--- ununique done unit "+objUnit.unit);
+									console.log("--- ununique done unit "+objUnit.unit);
 									objValidationState.arrDoubleSpendInputs.push({message_index: message_index, input_index: input_index});
 									unlock();
 									cb3();
@@ -1638,7 +1636,7 @@ function validatePaymentInputsAndOutputs(conn, payload, objAsset, message_index,
 						if (arrInputAddresses.indexOf(owner_address) === -1)
 							arrInputAddresses.push(owner_address);
 						total_input += src_coin.amount;
-						logger.debug("-- val state "+JSON.stringify(objValidationState));
+						console.log("-- val state "+JSON.stringify(objValidationState));
 					//	if (objAsset)
 					//		profiler2.stop('validate transfer');
 						return checkInputDoubleSpend(cb);
@@ -1662,13 +1660,23 @@ function validatePaymentInputsAndOutputs(conn, payload, objAsset, message_index,
 								return cb("asset mismatch");
 							//if (src_output.is_stable !== 1) // we allow immediate spends, that's why the error is transient
 							//    return cb(createTransientError("input unit is not on stable MC yet, unit "+objUnit.unit+", input "+input.unit));
-							if (!objAsset || !objAsset.is_private){
-								// for public payments, you can't spend unconfirmed transactions
-								if (src_output.main_chain_index > objValidationState.last_ball_mci || src_output.main_chain_index === null)
-									return cb("src output must be before last ball");
+							if (src_output.main_chain_index !== null && src_output.main_chain_index <= objValidationState.last_ball_mci && src_output.sequence !== 'good')
+								return cb("stable input unit "+input.unit+" is not serial");
+							if (objValidationState.last_ball_mci < constants.spendUnconfirmedUpgradeMci){
+								if (!objAsset || !objAsset.is_private){
+									// for public payments, you can't spend unconfirmed transactions
+									if (src_output.main_chain_index > objValidationState.last_ball_mci || src_output.main_chain_index === null)
+										return cb("src output must be before last ball");
+								}
+								if (src_output.sequence !== 'good') // it is also stable or private
+									return cb("input unit "+input.unit+" is not serial");
 							}
-							if (src_output.sequence !== 'good') // it is also stable or private
-								return cb("input unit "+input.unit+" is not serial");
+							else{ // after this MCI, spending unconfirmed is allowed for public assets too, non-good sequence will be inherited
+								if (src_output.sequence !== 'good'){
+									if (objValidationState.sequence === 'good' || objValidationState.sequence === 'temp-bad')
+										objValidationState.sequence = src_output.sequence;
+								}
+							}
 							var owner_address = src_output.address;
 							if (arrAuthorAddresses.indexOf(owner_address) === -1)
 								return cb("output owner is not among authors");
@@ -1774,7 +1782,7 @@ function validatePaymentInputsAndOutputs(conn, payload, objAsset, message_index,
 			}
 		},
 		function(err){
-			logger.debug("inputs done "+payload.asset, arrInputAddresses, arrOutputAddresses);
+			console.log("inputs done "+payload.asset, arrInputAddresses, arrOutputAddresses);
 			if (err)
 				return callback(err);
 			if (objAsset){
@@ -1818,7 +1826,7 @@ function validatePaymentInputsAndOutputs(conn, payload, objAsset, message_index,
 									return cb(cond_err);
 								if (!bSatisfiesCondition)
 									return cb("transfer or issue condition not satisfied");
-								logger.debug("validatePaymentInputsAndOutputs with transfer/issue conditions done");
+								console.log("validatePaymentInputsAndOutputs with transfer/issue conditions done");
 								cb();
 							}
 						);
@@ -1830,7 +1838,7 @@ function validatePaymentInputsAndOutputs(conn, payload, objAsset, message_index,
 					return callback("inputs and outputs do not balance: "+total_input+" !== "+total_output+" + "+objUnit.headers_commission+" + "+objUnit.payload_commission);
 				callback();
 			}
-		//	logger.debug("validatePaymentInputsAndOutputs done");
+		//	console.log("validatePaymentInputsAndOutputs done");
 		//	if (objAsset)
 		//		profiler2.stop('validate IO');
 		//	callback();
@@ -2034,8 +2042,65 @@ function createJointError(err){
 }
 
 
+function validateSignedMessage(objSignedMessage, handleResult){
+	if (typeof objSignedMessage !== 'object')
+		return handleResult("not an object");
+	if (ValidationUtils.hasFieldsExcept(objSignedMessage, ["signed_message", "authors"]))
+		return handleResult("unknown fields");
+	if (typeof objSignedMessage.signed_message !== 'string')
+		return handleResult("signed message not a string");
+	if (!Array.isArray(objSignedMessage.authors))
+		return handleResult("authors not an array");
+	if (!ValidationUtils.isArrayOfLength(objSignedMessage.authors, 1))
+		return handleResult("authors not an array of len 1");
+	var objAuthor = objSignedMessage.authors[0];
+	if (!objAuthor)
+		return handleResult("no authors[0]");
+	if (!ValidationUtils.isValidAddress(objAuthor.address))
+		return handleResult("not valid address");
+	if (typeof objAuthor.authentifiers !== 'object')
+		return handleResult("not valid authentifiers");
+	var arrAddressDefinition = objAuthor.definition;
+	if (objectHash.getChash160(arrAddressDefinition) !== objAuthor.address)
+		return handleResult("wrong definition: "+objectHash.getChash160(arrAddressDefinition) +"!=="+ objAuthor.address);
+	var objUnit = _.clone(objSignedMessage);
+	objUnit.messages = []; // some ops need it
+	var objValidationState = {
+		unit_hash_to_sign: objectHash.getUnitHashToSign(objSignedMessage),
+		last_ball_mci: -1,
+		bNoReferences: true
+	};
+	// passing db as null
+	Definition.validateAuthentifiers(
+		null, objAuthor.address, null, arrAddressDefinition, objUnit, objValidationState, objAuthor.authentifiers, 
+		function(err, res){
+			if (err) // error in address definition
+				return handleResult(err);
+			if (!res) // wrong signature or the like
+				return handleResult("authentifier verification failed");
+			handleResult();
+		}
+	);
+}
+
+// inconsistent for multisig addresses
+function validateSignedMessageSync(objSignedMessage){
+	var err;
+	var bCalledBack = false;
+	validateSignedMessage(objSignedMessage, function(_err){
+		err = _err;
+		bCalledBack = true;
+	});
+	if (!bCalledBack)
+		throw Error("validateSignedMessage is not sync");
+	return err;
+}
+
 exports.validate = validate;
 exports.hasValidHashes = hasValidHashes;
 exports.validateAuthorSignaturesWithoutReferences = validateAuthorSignaturesWithoutReferences;
 exports.validatePayment = validatePayment;
 exports.initPrivatePaymentValidationState = initPrivatePaymentValidationState;
+exports.validateSignedMessage = validateSignedMessage;
+exports.validateSignedMessageSync = validateSignedMessageSync;
+

@@ -1074,191 +1074,6 @@ function validateAuthentifiers(conn, address, this_asset, arrDefinition, objUnit
 		handleResult(false);
 	}
 
-	
-	function augmentMessages(onDone){
-		logger.debug("augmenting");
-		var arrAuthorAddresses = objUnit.authors.map(function(author){ return author.address; });
-		objValidationState.arrAugmentedMessages = _.cloneDeep(objUnit.messages);
-		async.eachSeries(
-			objValidationState.arrAugmentedMessages,
-			function(message, cb3){
-				if (message.app !== 'payment' || !message.payload) // we are looking only for public payments
-					return cb3();
-				var payload = message.payload;
-				if (!payload.inputs) // skip now, will choke when checking the message
-					return cb3();
-				logger.debug("augmenting inputs");
-				async.eachSeries(
-					payload.inputs,
-					function(input, cb4){
-						logger.debug("input", input);
-						if (input.type === "issue"){
-							if (!input.address)
-								input.address = arrAuthorAddresses[0];
-							cb4();
-						}
-						else if (!input.type){
-							input.type = "transfer";
-							conn.query(
-								"SELECT amount, address FROM outputs WHERE unit=? AND message_index=? AND output_index=?", 
-								[input.unit, input.message_index, input.output_index],
-								function(rows){
-									if (rows.length === 1){
-										logger.debug("src", rows[0]);
-										input.amount = rows[0].amount;
-										input.address = rows[0].address;
-									} // else will choke when checking the message
-									cb4();
-								}
-							);
-						}
-						else // ignore headers commissions and witnessing
-							cb4();
-					},
-					cb3
-				);
-			},
-			onDone
-		);
-	}
-	
-	var bAssetCondition = (assocAuthentifiers === null);
-	if (bAssetCondition && address || !bAssetCondition && this_asset)
-		throw Error("incompatible params");
-	var fatal_error = null;
-	var arrUsedPaths = [];
-	
-	// we need to re-validate the definition every time, not just the first time we see it, because:
-	// 1. in case a referenced address was redefined, complexity might change and exceed the limit
-	// 2. redefinition of a referenced address might introduce loops that will drive complexity to infinity
-	// 3. if an inner address was redefined by keychange but the definition for the new keyset not supplied before last ball, the address 
-	// becomes temporarily unusable
-	validateDefinition(conn, arrDefinition, objUnit, objValidationState, Object.keys(assocAuthentifiers), bAssetCondition, function(err){
-		if (err)
-			return cb(err);
-		logger.debug("eval def");
-		evaluate(arrDefinition, 'r', function(res){
-			if (fatal_error)
-				return cb(fatal_error);
-			if (!bAssetCondition && arrUsedPaths.length !== Object.keys(assocAuthentifiers).length)
-				return cb("some authentifiers are not used, res="+res+", used="+arrUsedPaths+", passed="+JSON.stringify(assocAuthentifiers));
-			cb(null, res);
-		});
-	});
-}
-
-function replaceInTemplate(arrTemplate, params){
-	function replaceInVar(x){
-		switch (typeof x){
-			case 'number': 
-			case 'boolean': 
-				return x;
-			case 'string':
-				// searching for pattern "$name"
-				if (x.charAt(0) !== '$')
-					return x;
-				var name = x.substring(1);
-				if (!(name in params))
-					throw NoVarException("variable "+name+" not specified");
-				return params[name]; // may change type if params[name] is not a string
-			case 'object':
-				if (Array.isArray(x))
-					for (var i=0; i<x.length; i++)
-						x[i] = replaceInVar(x[i]);
-				else
-					for (var key in x)
-						x[key] = replaceInVar(x[key]);
-				return x;
-			default:
-				throw Error("unknown type");
-		}
-	}
-	return replaceInVar(_.cloneDeep(arrTemplate));
-}
-
-function NoVarException(error){
-	this.error = error;
-	this.toString = function(){
-		return this.error;
-	};
-}
-
-function hasReferences(arrDefinition){
-	
-	function evaluate(arr){
-		var op = arr[0];
-		var args = arr[1];
-	
-		switch(op){
-			case 'or':
-			case 'and':
-				for (var i=0; i<args.length; i++)
-					if (evaluate(args[i]))
-						return true;
-				return false;
-				
-			case 'r of set':
-				for (var i=0; i<args.set.length; i++)
-					if (evaluate(args.set[i]))
-						return true;
-				return false;
-				
-			case 'weighted and':
-				for (var i=0; i<args.set.length; i++)
-					if (evaluate(args.set[i].value))
-						return true;
-				return false;
-				
-			case 'sig':
-			case 'hash':
-			case 'cosigned by':
-				return false;
-				
-			case 'not':
-				return evaluate(args);
-				
-			case 'address':
-			case 'definition template':
-			case 'seen address':
-			case 'seen':
-			case 'in data feed':
-			case 'in merkle':
-			case 'mci':
-			case 'age':
-			case 'has':
-			case 'has one':
-			case 'has equal':
-			case 'has one equal':
-			case 'sum':
-				return true;
-				
-			default:
-				throw Error("unknown op: "+op);
-		}
-	}
-	
-	return evaluate(arrDefinition);
-}
-
-exports.validateDefinition = validateDefinition;
-exports.evaluateAssetCondition = evaluateAssetCondition;
-exports.validateAuthentifiers = validateAuthentifiers;
-exports.hasReferences = hasReferences;
-exports.replaceInTemplate = replaceInTemplate;
-
-/*jslint node: true */
-"use strict";
-var crypto = require('crypto');
-var _ = require('lodash');
-var async = require('async');
-var constants = require('./constants.js');
-var storage = require('./storage.js');
-var db = require('./db.js');
-var ecdsaSig = require('./signature.js');
-var merkle = require('./merkle.js');
-var ValidationUtils = require("./validation_utils.js");
-var objectHash = require("./object_hash.js");
-
 
 var hasFieldsExcept = ValidationUtils.hasFieldsExcept;
 var isStringOfLength = ValidationUtils.isStringOfLength;
@@ -1678,7 +1493,7 @@ function validateDefinition(conn, arrDefinition, objUnit, objValidationState, ar
 					return cb("invalid relation: "+relation);
 				if (!isNonnegativeInteger(value))
 					return cb(op+" must be a non-neg number");
-				break;
+				return cb();
 				
 			case 'has':
 			case 'has one':
@@ -2131,18 +1946,22 @@ function validateAuthentifiers(conn, address, this_asset, arrDefinition, objUnit
 			case 'age':
 				var relation = args[0];
 				var age = args[1];
-				var arrSrcUnits = [];
-				for (var i=0; i<objUnit.messages.length; i++){
-					var message = objUnit.messages[i];
-					if (message.app !== 'payment' || !message.payload)
-						continue;
-					var inputs = message.payload.inputs;
-					for (var j=0; j<inputs.length; j++){
-						var input = inputs[j];
-						if (!input.address) // augment should add it
-							throw Error('no input address');
-						if (input.address === address && arrSrcUnits.indexOf(input.unit) === -1)
-							arrSrcUnits.push(input.unit);
+				augmentMessagesAndContinue(function(){
+					var arrSrcUnits = [];
+					for (var i=0; i<objValidationState.arrAugmentedMessages.length; i++){
+						var message = objValidationState.arrAugmentedMessages[i];
+						if (message.app !== 'payment' || !message.payload)
+							continue;
+						var inputs = message.payload.inputs;
+						for (var j=0; j<inputs.length; j++){
+							var input = inputs[j];
+							if (input.type !== 'transfer') // assume age is satisfied for issue, headers commission, and witnessing commission
+								continue;
+							if (!input.address) // augment should add it
+								throw Error('no input address');
+							if (input.address === address && arrSrcUnits.indexOf(input.unit) === -1)
+								arrSrcUnits.push(input.unit);
+						}
 					}
 				}
 				if (arrSrcUnits.length === 0) // not spending anything from our address
@@ -2157,6 +1976,19 @@ function validateAuthentifiers(conn, address, this_asset, arrDefinition, objUnit
 						cb2(bSatisfies);
 					}
 				);
+					if (arrSrcUnits.length === 0) // not spending anything from our address
+						return cb2(false);
+					conn.query(
+						"SELECT 1 FROM units \n\
+						WHERE unit IN(?) AND ?"+relation+"main_chain_index AND main_chain_index<=? AND +sequence='good' AND is_stable=1",
+						[arrSrcUnits, objValidationState.last_ball_mci - age, objValidationState.last_ball_mci],
+						function(rows){
+							var bSatisfies = (rows.length === arrSrcUnits.length);
+							console.log(op+" "+bSatisfies);
+							cb2(bSatisfies);
+						}
+					);
+				});
 				break;
 				
 			case 'has':
@@ -2235,6 +2067,13 @@ function validateAuthentifiers(conn, address, this_asset, arrDefinition, objUnit
 		}
 	}
 	
+	
+	function augmentMessagesAndContinue(next){
+		if (!objValidationState.arrAugmentedMessages)
+			augmentMessages(next);
+		else
+			next();
+	}
 	
 	function augmentMessagesAndEvaluateFilter(op, filter, handleResult){
 		function doEvaluateFilter(){
@@ -2355,6 +2194,8 @@ function validateAuthentifiers(conn, address, this_asset, arrDefinition, objUnit
 										input.amount = rows[0].amount;
 										input.address = rows[0].address;
 									} // else will choke when checking the message
+									else
+										console.log(rows.length+" src outputs found");
 									cb4();
 								}
 							);

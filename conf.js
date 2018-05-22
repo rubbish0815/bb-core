@@ -1,7 +1,6 @@
 /*jslint node: true */
 "use strict";
 require('./enforce_singleton.js');
-var logger = require('./logger.js');
 
 function mergeExports(anotherModule){
 	for (var key in anotherModule)
@@ -50,6 +49,12 @@ exports.bWantNewPeers = true;
 // true, when removed_paired_device commands received from peers are to be ignored. Default is false.
 exports.bIgnoreUnpairRequests = false;
 
+// Logging
+exports.LOG_LEVEL = 70;
+exports.LOG_LEVEL_CO = "<=";
+exports.LOG_FILENAME = null;
+exports.LOG_LEVEL_FILE = 50;
+
 // storage engine: mysql or sqlite
 exports.storage = 'sqlite';
 if (process.browser){
@@ -82,24 +87,24 @@ if (typeof window === 'undefined' || !window.cordova){ // desktop
 	if (appRootDir !== __dirname){
 		try{
 			mergeExports(require(appRootDir + '/conf.js'));
-			logger.debug('merged app root conf from ' + appRootDir + '/conf.js');
+			console.log('merged app root conf from ' + appRootDir + '/conf.js');
 		}
 		catch(e){
-			logger.debug("not using app root conf: "+e);
+			console.log("not using app root conf: "+e);
 		}
 	}
 	else
-		logger.debug("I'm already at the root");
+		console.log("I'm already at the root");
 	
 	// merge conf from user home directory, if any.
 	// Note that it is json rather than js to avoid code injection
 	var appDataDir = desktopApp.getAppDataDir();
 	try{
 		mergeExports(require(appDataDir + '/conf.json'));
-		logger.debug('merged user conf from ' + appDataDir + '/conf.json');
+		console.log('merged user conf from ' + appDataDir + '/conf.json');
 	}
 	catch(e){
-		logger.debug('not using user conf: '+e);
+		console.log('not using user conf: '+e);
 	}
 }
 

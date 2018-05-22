@@ -7,10 +7,10 @@ var conf = require('./conf.js');
 var desktopApp = require('./desktop_app.js');
 
 var appDataDir = desktopApp.getAppDataDir();
-var log_filename = conf.LOG_FILENAME || (appDataDir + '/' + 'log.txt');
+var log_filename = conf.LOG_FILENAME || (appDataDir + '/logs/' + 'log.txt');
 var log_level = conf.LOG_LEVEL || 70;
 var log_level_co = conf.LOG_LEVEL_CO || "<=";
-
+var log_level_file = conf.LOG_LEVEL_FILE || 50;
 
 
 // Check dir exists
@@ -58,7 +58,7 @@ function printlog(error_level, bgcolor, fgcolor, symbol, message, data, cb) {
 	
 	log.symbol = symbol;
 
-	// Write Log File?
+	// write Log File?
 	if (compare(error_level, "<=", log_level_file) && writeStream) {
 		if (log.data) {
 			writeStream.write(util.format('[%s] %s : %s - %s\n', log.symbol,

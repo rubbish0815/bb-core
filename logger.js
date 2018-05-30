@@ -15,99 +15,103 @@ var log_level_file = conf.LOG_LEVEL_FILE || 50;
 
 // Check dir exists
 if (!fs.existsSync(appDataDir)) {
-	fs.mkdirSync(appDataDir);
+    fs.mkdirSync(appDataDir);
 }
 
 fs.writeFileSync(log_filename, '');
 var writeStream = fs.createWriteStream(log_filename);
 
 function compare(post, operator, value) {
-	  switch (operator) {
-	    case '>':   return post > value;
-	    case '<':   return post < value;
-	    case '>=':  return post >= value;
-	    case '<=':  return post <= value;
-	    case '==':  return post == value;
-	    case '!=':  return post != value;
-	    case '===': return post === value;
-	    case '!==': return post !== value;
-	  }
-	}
+    switch (operator) {
+        case '>':
+            return post > value;
+        case '<':
+            return post < value;
+        case '>=':
+            return post >= value;
+        case '<=':
+            return post <= value;
+        case '==':
+            return post == value;
+        case '!=':
+            return post != value;
+        case '===':
+            return post === value;
+        case '!==':
+            return post !== value;
+    }
+}
 
 function printlog(error_level, bgcolor, fgcolor, symbol, message, data, cb) {
 
-	var args = Array.prototype.slice.call(arguments);
-	var log = {};
+    var args = Array.prototype.slice.call(arguments);
+    var log = {};
 
-	if (message instanceof Error) {
-		log.message = message.stack;
-	} else {
-		log.message = message;
-	}
+    if (message instanceof Error) {
+        log.message = message.stack;
+    } else {
+        log.message = message;
+    }
 
-	if (data && util.isObject(data)) {
-		try {
-			log.data = JSON.stringify(data);
-		} catch (e) {
-			// TODO: handle exception
-		}		
-	} else {
-		log.data = data;
-	}
+    if (data && util.isObject(data)) {
+        try {
+            log.data = JSON.stringify(data);
+        } catch (e) {
+            // TODO: handle exception
+        }
+    } else {
+        log.data = data;
+    }
 
-	
-	log.symbol = symbol;
 
-	// write Log File?
-	if (compare(error_level, "<=", log_level_file) && writeStream) {
-		if (log.data) {
-			writeStream.write(util.format('[%s] %s : %s - %s\n', log.symbol,
-					Date().toString(), log.message, log.data));
-		} else {
-			writeStream.write(util.format('[%s] %s : %s\n', log.symbol, Date()
-					.toString(), log.message));
-		}
-	}
+    log.symbol = symbol;
 
-	// write Log
-	if (compare(error_level, log_level_co, log_level)) {
-		if (log.data) {
-			console.log(bgcolor + '[%s] %s: %s - %s' + fgcolor, symbol, Date()
-				.toString(), log.message, log.data);				
-		} else {
-			console.log(bgcolor + '[%s] %s: %s' + fgcolor, symbol, Date()
-				.toString(), log.message);
-		}
-	}
-	return cb;
+    // write Log File?
+    if (compare(error_level, "<=", log_level_file) && writeStream) {
+        if (log.data) {
+            writeStream.write(util.format('[%s] %s : %s - %s\n', log.symbol, strftime('%F %T', new Date()), log.message, log.data));
+        } else {
+            writeStream.write(util.format('[%s] %s : %s\n', log.symbol, strftime('%F %T', new Date()), log.message));
+        }
+    }
+
+    // write Log
+    if (compare(error_level, log_level_co, log_level)) {
+        if (log.data) {
+            console.log(bgcolor + '[%s] %s: %s - %s' + fgcolor, symbol, strftime('%F %T', new Date()), log.message, log.data);
+        } else {
+            console.log(bgcolor + '[%s] %s: %s' + fgcolor, symbol, strftime('%F %T', new Date()), log.message);
+        }
+    }
+    return cb;
 }
 
 function trace(message, data) {
-	printlog(10, "\x1b[40m", "\x1b[37m", "TRC", message, data);
+    printlog(10, "\x1b[40m", "\x1b[37m", "TRC", message, data);
 }
 
 function info(message, data) {
-	printlog(20, "\x1b[40m", "\x1b[33m", "INF", message, data);
+    printlog(20, "\x1b[40m", "\x1b[33m", "INF", message, data);
 }
 
 function warn(message, data) {
-	printlog(30, "\x1b[40m", "\x1b[35m", "WRN", message, data);
+    printlog(30, "\x1b[40m", "\x1b[35m", "WRN", message, data);
 }
 
 function error(message, data) {
-	printlog(40, "\x1b[40m", "\x1b[36m", "ERR", message, data);
+    printlog(40, "\x1b[40m", "\x1b[36m", "ERR", message, data);
 }
 
 function fatal(message, data) {
-	printlog(50, "\x1b[40m", "\x1b[31m", "FTL", message, data);
+    printlog(50, "\x1b[40m", "\x1b[31m", "FTL", message, data);
 }
 
 function log(message, data) {
-	printlog(60, "\x1b[40m", "\x1b[37m", "LOG", message, data);
+    printlog(60, "\x1b[40m", "\x1b[37m", "LOG", message, data);
 }
 
 function debug(message, data) {
-	printlog(90, "\x1b[40m", "\x1b[32m", "DBG", message, data);
+    printlog(90, "\x1b[40m", "\x1b[32m", "DBG", message, data);
 }
 /*
  * 
